@@ -20,7 +20,10 @@ endif()
 
 add_library(nox_core
     src/api_client.cpp
+    src/agent.cpp
     src/auth_manager.cpp
+    src/backup_service.cpp
+    src/clipboard.cpp
     src/config_manager.cpp
     src/crypto_service.cpp
     src/input.cpp
@@ -30,8 +33,14 @@ target_include_directories(nox_core PUBLIC include)
 target_compile_definitions(nox_core PUBLIC
     NOX_DEFAULT_SERVER_URL="${NOX_DEFAULT_SERVER_URL}"
     NOX_VERSION="${PROJECT_VERSION}")
+if(MSVC)
+    target_compile_definitions(nox_core PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
 target_link_libraries(nox_core PUBLIC
     CURL::libcurl nlohmann_json::nlohmann_json ${NOX_SODIUM_TARGET})
+if(WIN32)
+    target_link_libraries(nox_core PUBLIC advapi32)
+endif()
 
 if(MSVC)
     target_compile_options(nox_core PRIVATE /W4 /permissive- /EHsc)

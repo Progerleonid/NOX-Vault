@@ -19,11 +19,15 @@ class SecretPayload(BaseModel):
     def exactly_one_name(self) -> "SecretPayload":
         if (self.name is None) == (self.encrypted_name is None):
             raise ValueError("exactly one of name and encrypted_name is required")
+        if len(self.nonce) != 24 or len(self.ciphertext) < 16:
+            raise ValueError("secret nonce or ciphertext has an invalid size")
+        if self.encrypted_name is not None and len(self.encrypted_name) < 45:
+            raise ValueError("encrypted name has an invalid size")
         return self
 
 
 class SecretCreate(SecretPayload):
-    pass
+    id: UUID | None = None
 
 
 class SecretUpdate(SecretPayload):
@@ -46,4 +50,3 @@ class SecretResponse(BaseModel):
     @field_serializer("encrypted_name", "ciphertext", "nonce")
     def serialize_bytes(self, value: bytes | None) -> str | None:
         return base64.b64encode(value).decode("ascii") if value is not None else None
-

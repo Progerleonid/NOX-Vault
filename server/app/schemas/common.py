@@ -15,4 +15,3 @@ def decode_base64(value: object) -> bytes:
 
 
 Base64Bytes = Annotated[bytes, BeforeValidator(decode_base64)]
-

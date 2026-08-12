@@ -54,7 +54,7 @@ nlohmann::json ApiClient::request(const std::string& method, const std::string& 
 }
 void ApiClient::check_compatibility() const {
     auto result = get("/health");
-    try { if (result.at("status") != "ok" || result.at("api_version").get<int>() != 1) throw ApiCompatibilityError("Server API is not compatible with this client"); }
+    try { const auto version=result.at("api_version").get<int>(); if (result.at("status") != "ok" || version != 1) throw ApiCompatibilityError("Server API version "+std::to_string(version)+" is not supported by this client. Supported versions: 1"); }
     catch (const nlohmann::json::exception&) { throw ApiCompatibilityError("Server health response is invalid"); }
 }
 }

@@ -41,6 +41,9 @@ Bytes CryptoService::decrypt(const EncryptedValue& value, const Bytes& key, cons
 }
 std::string CryptoService::vault_key_aad(const std::string& user_id) { return "nox:v1:vault-key:" + user_id; }
 std::string CryptoService::secret_aad(const std::string& vault_id, const std::string& name) { return "nox:v1:secret:" + vault_id + ":" + name; }
+std::string CryptoService::private_secret_aad(const std::string& vault_id, const std::string& id) { return "nox:v1:private-secret:" + vault_id + ":" + id; }
+std::string CryptoService::private_name_aad(const std::string& vault_id, const std::string& id) { return "nox:v1:private-name:" + vault_id + ":" + id; }
+std::string CryptoService::backup_aad(const std::string& user_id) { return "nox:v1:backup:" + user_id; }
 void CryptoService::wipe(Bytes& value) noexcept { if (!value.empty()) sodium_memzero(value.data(), value.size()); value.clear(); }
 void CryptoService::wipe(std::string& value) noexcept { if (!value.empty()) sodium_memzero(value.data(), value.size()); value.clear(); }
 }

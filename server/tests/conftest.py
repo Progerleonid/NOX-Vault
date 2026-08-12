@@ -61,12 +61,13 @@ def user_factory(client: TestClient):
 @pytest.fixture
 def vault_payload() -> dict[str, object]:
     return {
-        "encrypted_vault_key": "dmF1bHQta2V5",
-        "vault_key_nonce": "bm9uY2U=",
-        "kdf_salt": "c2FsdA==",
+        "encrypted_vault_key": "a2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tr",
+        "vault_key_nonce": "bm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5u",
+        "kdf_salt": "c3Nzc3Nzc3Nzc3Nzc3Nzcw==",
         "kdf_algorithm": "argon2id",
         "kdf_ops_limit": 3,
         "kdf_mem_limit": 67108864,
+        "private_metadata": False,
     }
 
 
@@ -74,8 +75,8 @@ def vault_payload() -> dict[str, object]:
 def secret_payload() -> dict[str, object]:
     return {
         "name": "github",
-        "ciphertext": "Y2lwaGVydGV4dA==",
-        "nonce": "bm9uY2U=",
+        "ciphertext": "Y2NjY2NjY2NjY2NjY2NjYw==",
+        "nonce": "bm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5u",
         "algorithm": "xchacha20poly1305",
         "version": 1,
     }

@@ -1,7 +1,7 @@
 import uuid
 from uuid import UUID
 
-from sqlalchemy import BigInteger, ForeignKey, Index, LargeBinary, String, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, ForeignKey, Index, LargeBinary, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -26,6 +26,7 @@ class Vault(TimestampMixin, Base):
     kdf_algorithm: Mapped[str] = mapped_column(String(50))
     kdf_ops_limit: Mapped[int] = mapped_column(BigInteger)
     kdf_mem_limit: Mapped[int] = mapped_column(BigInteger)
+    private_metadata: Mapped[bool] = mapped_column(Boolean, default=False)
     user: Mapped["User"] = relationship(back_populates="vault")
     secrets: Mapped[list["Secret"]] = relationship(back_populates="vault", cascade="all, delete-orphan")
 

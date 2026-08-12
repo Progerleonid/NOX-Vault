@@ -22,7 +22,10 @@ def create_secret(
     vault = get_vault_for_user(db, user.id)
     if vault is None:
         raise APIError(404, "vault_not_found", "Vault was not found")
-    secret = Secret(vault_id=vault.id, record_version=1, **payload.model_dump())
+    values = payload.model_dump(exclude={"id"})
+    if vault.private_metadata != (payload.encrypted_name is not None):
+        raise APIError(422, "metadata_mode_mismatch", "Secret name does not match the vault metadata mode")
+    secret = Secret(id=payload.id, vault_id=vault.id, record_version=1, **values)
     db.add(secret)
     try:
         db.flush()
@@ -55,6 +58,10 @@ def update_secret(
     secret = get_secret_for_user(db, secret_id, user.id)
     if secret is None:
         raise APIError(404, "secret_not_found", "Secret was not found")
+    vault = get_vault_for_user(db, user.id)
+    assert vault is not None
+    if vault.private_metadata != (payload.encrypted_name is not None):
+        raise APIError(422, "metadata_mode_mismatch", "Secret name does not match the vault metadata mode")
     values = payload.model_dump(exclude={"record_version"})
     values["record_version"] = Secret.record_version + 1
     try:
@@ -87,4 +94,3 @@ def delete_secret(
     add_audit_event(db, request, user.id, "secret_deleted", secret_id)
     db.commit()
     return Response(status_code=204)
-

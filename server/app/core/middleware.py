@@ -25,7 +25,43 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > self.max_bytes:
+        if content_length:
+            try:
+                declared_length = int(content_length)
+            except ValueError:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": {
+                            "code": "invalid_content_length",
+                            "message": "Invalid Content-Length header",
+                        }
+                    },
+                )
+            if declared_length < 0:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": {
+                            "code": "invalid_content_length",
+                            "message": "Invalid Content-Length header",
+                        }
+                    },
+                )
+        else:
+            declared_length = 0
+        if declared_length > self.max_bytes:
+            return JSONResponse(
+                status_code=413,
+                content={
+                    "error": {
+                        "code": "request_too_large",
+                        "message": "Request body is too large",
+                    }
+                },
+            )
+        body = await request.body()
+        if len(body) > self.max_bytes:
             return JSONResponse(
                 status_code=413,
                 content={
@@ -55,6 +91,8 @@ class LoginRateLimiter:
 
     def add_failure(self, key: str) -> None:
         with self._lock:
+            if key not in self._entries and len(self._entries) >= 10_000:
+                self._entries.pop(next(iter(self._entries)))
             self._entries[key].append(monotonic())
 
     def clear(self, key: str) -> None:
