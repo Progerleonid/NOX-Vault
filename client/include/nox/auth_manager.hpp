@@ -6,11 +6,15 @@
 
 namespace nox {
 class AuthManager {
-public:
-    AuthManager(ApiClient& api, ConfigManager& config) : api_(api), config_(config) {}
-    AuthSession authenticate(const std::string& email, const std::string& password, bool registration);
+  public:
+    AuthManager(ApiClient &api, ConfigManager &config) : api_(api), config_(config) {
+    }
+    AuthSession authenticate(const std::string &email, const std::string &password, bool registration);
     void logout();
     [[nodiscard]] AuthSession require_session() const;
-private: ApiClient& api_; ConfigManager& config_;
+
+  private:
+    ApiClient &api_;
+    ConfigManager &config_;
 };
-}
+} // namespace nox
