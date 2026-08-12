@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "nox-vault-client",
+  "version-string": "0.2.0",
+  "builtin-baseline": "ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0",
+  "default-features": ["tests"],
+  "dependencies": [
+    "cli11",
+    "curl",
+    "libsodium",
+    "nlohmann-json"
+  ],
+  "features": {
+    "tests": {
+      "description": "Build the Catch2 client test suite",
+      "dependencies": ["catch2"]
+    }
+  }
+}

@@ -9,4 +9,4 @@ htmlcov/
 .idea/
 .vscode/
 server/.env
-
+client/build*/
