@@ -45,7 +45,13 @@ void print_agent_status(const nox::AgentClient &agent) {
                   << r.at("absolute_seconds") << "s remaining)\n";
 }
 void run_shell(const nox::AuthSession &s, const nox::ConfigManager &c, const nox::AgentClient &agent) {
-    std::cout << "Nox Vault\n─────────\n";
+    std::cout << R"banner( _   _  _____  __  __   __     __          _ _
+| \ | |/ _ \ \/ /   \ \   / /_ _ _   _| | | |_
+|  \| | | | \  /     \ \ / / _` | | | | | | __|
+| |\  | |_| /  \      \ V / (_| | |_| | | | |_
+|_| \_|\___/_/\_\      \_/ \__,_|\__,_|_|_|\__|
+)banner"
+              << "Version: " << NOX_VERSION << "\n\n";
     print_agent_status(agent);
     std::string line;
     while (std::cout << "nox> " && std::getline(std::cin, line)) {
