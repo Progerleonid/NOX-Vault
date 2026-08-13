@@ -19,9 +19,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app: object, max_bytes: int) -> None:
+    def __init__(self, app: object, max_bytes: int, max_restore_bytes: int) -> None:
         super().__init__(app)  # type: ignore[arg-type]
         self.max_bytes = max_bytes
+        self.max_restore_bytes = max_restore_bytes
 
     async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         content_length = request.headers.get("content-length")
@@ -50,7 +51,8 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
                 )
         else:
             declared_length = 0
-        if declared_length > self.max_bytes:
+        max_bytes = self.max_restore_bytes if request.url.path == "/api/v1/restore" else self.max_bytes
+        if declared_length > max_bytes:
             return JSONResponse(
                 status_code=413,
                 content={
@@ -61,7 +63,7 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
                 },
             )
         body = await request.body()
-        if len(body) > self.max_bytes:
+        if len(body) > max_bytes:
             return JSONResponse(
                 status_code=413,
                 content={

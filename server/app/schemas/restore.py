@@ -10,6 +10,7 @@ class RestoreSecret(BaseModel):
     id: UUID
     name: str | None = Field(default=None, min_length=1, max_length=255)
     encrypted_name: Base64Bytes | None = None
+    name_hash: Base64Bytes | None = None
     ciphertext: Base64Bytes
     nonce: Base64Bytes
     algorithm: Literal["xchacha20poly1305"]
@@ -20,6 +21,10 @@ class RestoreSecret(BaseModel):
     def exactly_one_name(self) -> "RestoreSecret":
         if (self.name is None) == (self.encrypted_name is None):
             raise ValueError("exactly one of name and encrypted_name is required")
+        if (self.encrypted_name is None and self.name_hash is not None) or (
+            self.name_hash is not None and len(self.name_hash) != 32
+        ):
+            raise ValueError("private secret name hash has an invalid size")
         return self
 
 

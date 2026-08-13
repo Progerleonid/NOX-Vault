@@ -75,6 +75,22 @@ def test_metadata_mode_is_enforced(client, user_factory, vault_payload, secret_p
     assert response.json()["error"]["code"] == "metadata_mode_mismatch"
 
 
+def test_private_name_hash_prevents_duplicate_names(client, user_factory, vault_payload, secret_payload):
+    _, headers = user_factory("private-duplicate@example.com")
+    client.post("/api/v1/vault", json={**vault_payload, "private_metadata": True}, headers=headers)
+    private = {
+        **secret_payload,
+        "name": None,
+        "encrypted_name": "ZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVl",
+        "name_hash": "aGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGg=",
+    }
+    assert client.post("/api/v1/secrets", json=private, headers=headers).status_code == 201
+    duplicate = {**private, "encrypted_name": "ZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZm"}
+    response = client.post("/api/v1/secrets", json=duplicate, headers=headers)
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "secret_name_exists"
+
+
 def test_restore_requires_same_account_and_explicit_replace(client, user_factory, vault_payload, secret_payload):
     import uuid
 
@@ -97,6 +113,27 @@ def test_restore_requires_same_account_and_explicit_replace(client, user_factory
     assert response.status_code == 201
     assert response.json() == {"restored_secrets": 1}
     assert client.get("/api/v1/vault", headers=headers).json()["id"] == restore["vault_id"]
+
+
+def test_restore_vault_id_collision_returns_conflict(client, user_factory, vault_payload):
+    _, headers_a = user_factory("restore-a@example.com")
+    _, headers_b = user_factory("restore-b@example.com")
+    vault_id = client.post("/api/v1/vault", json=vault_payload, headers=headers_a).json()["id"]
+    from app.core.security import decode_access_token
+
+    user_b = decode_access_token(headers_b["Authorization"].split()[1])
+    restore = {
+        "format_version": 1,
+        "source_user_id": str(user_b),
+        "replace": False,
+        "vault_id": vault_id,
+        **vault_payload,
+        "secrets": [],
+    }
+    response = client.post("/api/v1/restore", json=restore, headers=headers_b)
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "restore_conflict"
+    assert client.get("/api/v1/vault", headers=headers_a).status_code == 200
 
 
 def test_user_isolation(client, user_factory, vault_payload, secret_payload):

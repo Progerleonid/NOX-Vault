@@ -87,6 +87,14 @@ TEST_CASE("encrypted private name format roundtrips and binds to record") {
     REQUIRE_THROWS_AS(unpack_encrypted_name(packed), CryptoError);
     REQUIRE_THROWS_AS(unpack_encrypted_name(Bytes(10, 0)), CryptoError);
 }
+TEST_CASE("private name hashes are deterministic and keyed") {
+    CryptoService crypto;
+    auto key = crypto.random_vault_key();
+    auto other_key = crypto.random_vault_key();
+    REQUIRE(crypto.private_name_hash("github", key) == crypto.private_name_hash("github", key));
+    REQUIRE(crypto.private_name_hash("github", key) != crypto.private_name_hash("gitlab", key));
+    REQUIRE(crypto.private_name_hash("github", key) != crypto.private_name_hash("github", other_key));
+}
 TEST_CASE("local agent rejects malformed keys and enforces absolute timeout") {
     AgentClient client(std::filesystem::path("unused"));
     if (client.available()) {

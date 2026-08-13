@@ -77,6 +77,15 @@ std::string CryptoService::private_name_aad(const std::string &vault_id, const s
 std::string CryptoService::backup_aad(const std::string &user_id) {
     return "nox:v1:backup:" + user_id;
 }
+Bytes CryptoService::private_name_hash(const std::string &name, const Bytes &key) const {
+    if (key.size() != crypto_generichash_KEYBYTES)
+        throw CryptoError("Invalid key for private name hash");
+    Bytes result(crypto_generichash_BYTES);
+    if (crypto_generichash(result.data(), result.size(), reinterpret_cast<const unsigned char *>(name.data()),
+                           static_cast<unsigned long long>(name.size()), key.data(), key.size()) != 0)
+        throw CryptoError("Unable to hash private secret name");
+    return result;
+}
 void CryptoService::wipe(Bytes &value) noexcept {
     if (!value.empty())
         sodium_memzero(value.data(), value.size());

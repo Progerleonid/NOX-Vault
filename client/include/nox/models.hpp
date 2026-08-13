@@ -33,6 +33,7 @@ struct SecretRecord {
     std::string id;
     std::optional<std::string> name;
     std::optional<EncryptedValue> encrypted_name;
+    std::optional<Bytes> name_hash;
     EncryptedValue value;
     int record_version{};
 };
@@ -50,7 +51,8 @@ SecretRecord parse_secret(const nlohmann::json &json);
 nlohmann::json serialize_vault_create(const EncryptedValue &key, const KdfParameters &kdf,
                                       bool private_metadata = false);
 nlohmann::json serialize_secret(const std::string &id, const std::optional<std::string> &name,
-                                const std::optional<EncryptedValue> &encrypted_name, const EncryptedValue &value);
+                                const std::optional<EncryptedValue> &encrypted_name, const EncryptedValue &value,
+                                const std::optional<Bytes> &name_hash = std::nullopt);
 std::string random_uuid();
 Bytes pack_encrypted_name(const EncryptedValue &value);
 EncryptedValue unpack_encrypted_name(const Bytes &value);

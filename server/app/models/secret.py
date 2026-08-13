@@ -14,6 +14,7 @@ class Secret(TimestampMixin, Base):
     __table_args__ = (
         CheckConstraint("(name IS NULL) <> (encrypted_name IS NULL)", name="ck_secret_one_name"),
         UniqueConstraint("vault_id", "name", name="uq_secret_vault_name"),
+        UniqueConstraint("vault_id", "name_hash", name="uq_secret_vault_name_hash"),
     )
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -22,6 +23,7 @@ class Secret(TimestampMixin, Base):
     )
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     encrypted_name: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    name_hash: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     ciphertext: Mapped[bytes] = mapped_column(LargeBinary)
     nonce: Mapped[bytes] = mapped_column(LargeBinary)
     algorithm: Mapped[str] = mapped_column(String(50))
@@ -30,4 +32,3 @@ class Secret(TimestampMixin, Base):
     vault: Mapped["Vault"] = relationship(back_populates="secrets")
 
 from app.models.vault import Vault  # noqa: E402
-

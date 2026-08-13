@@ -25,6 +25,8 @@ Application errors use `{"error":{"code":"...","message":"..."}}`. Validation er
 
 Vault crypto fields are `encrypted_vault_key` (48 decoded bytes), `vault_key_nonce` (24), `kdf_salt` (16), `kdf_algorithm: "argon2id"`, positive `kdf_ops_limit`/`kdf_mem_limit`. Binary data is Base64.
 
+Private-metadata Secret records may include `name_hash`, a 32-byte keyed client-side hash used only to enforce unique names. Older private records and backups without this field remain readable.
+
 A Secret contains `name` or `encrypted_name`, `ciphertext` (at least a 16-byte tag), 24-byte `nonce`, `algorithm: "xchacha20poly1305"`, `version: 1`, and server-managed `record_version`. The name representation must match the vault's fixed metadata mode. Updates atomically match the submitted record version; a stale request receives `409 version_conflict`.
 
 Restore accepts only `format_version: 1`, the authenticated user's `source_user_id`, a vault UUID/header, metadata mode, and at most 10,000 opaque records. Replacing an existing vault requires explicit `replace: true` from the client workflow.

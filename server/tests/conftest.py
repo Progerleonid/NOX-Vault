@@ -1,5 +1,8 @@
 import os
 from collections.abc import Generator
+from pathlib import Path
+
+SERVER_DIR = Path(__file__).resolve().parents[1]
 
 os.environ["DATABASE_URL"] = os.getenv(
     "TEST_DATABASE_URL", "postgresql+psycopg://nox:change-me@localhost:5432/nox_vault_test"
@@ -9,20 +12,20 @@ os.environ["LOGIN_RATE_LIMIT_ATTEMPTS"] = "3"
 os.environ["LOGIN_RATE_LIMIT_WINDOW_SECONDS"] = "60"
 os.environ["MAX_REQUEST_SIZE"] = "2048"
 
-import pytest
-from alembic import command
-from alembic.config import Config
-from fastapi.testclient import TestClient
-from sqlalchemy import text
+import pytest  # noqa: E402
+from alembic import command  # noqa: E402
+from alembic.config import Config  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import text  # noqa: E402
 
-from app.api.auth import login_limiter
-from app.core.database import Base, engine
-from app.main import app
+from app.api.auth import login_limiter  # noqa: E402
+from app.core.database import Base, engine  # noqa: E402
+from app.main import app  # noqa: E402
 
 
 @pytest.fixture(scope="session", autouse=True)
 def schema() -> Generator[None, None, None]:
-    alembic_config = Config("alembic.ini")
+    alembic_config = Config(SERVER_DIR / "alembic.ini")
     command.upgrade(alembic_config, "head")
     yield
     command.downgrade(alembic_config, "base")

@@ -10,7 +10,11 @@ from app.core.middleware import RequestSizeLimitMiddleware, SecurityHeadersMiddl
 settings = get_settings()
 app = FastAPI(title="NOX VAULT API", version=__version__)
 app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(RequestSizeLimitMiddleware, max_bytes=settings.max_request_size)
+app.add_middleware(
+    RequestSizeLimitMiddleware,
+    max_bytes=settings.max_request_size,
+    max_restore_bytes=settings.max_restore_request_size,
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -20,4 +24,3 @@ app.add_middleware(
 )
 install_error_handlers(app)
 app.include_router(api_router)
-

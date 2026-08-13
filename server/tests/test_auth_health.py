@@ -6,7 +6,7 @@ from app.core.security import create_access_token
 def test_health(client):
     response = client.get("/api/v1/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "database": "ok", "version": "0.1.0", "api_version": 1}
+    assert response.json() == {"status": "ok", "database": "ok", "version": "0.1.1", "api_version": 1}
     assert response.headers["x-content-type-options"] == "nosniff"
 
 
@@ -64,3 +64,13 @@ def test_request_size_limit(client):
         headers={"content-type": "application/json", "content-length": "2049"},
     )
     assert response.status_code == 413
+
+
+def test_restore_has_a_separate_request_size_limit(client, user_factory):
+    _, headers = user_factory()
+    response = client.post(
+        "/api/v1/restore",
+        content=b" " * 2049,
+        headers={**headers, "content-type": "application/json", "content-length": "2049"},
+    )
+    assert response.status_code == 422

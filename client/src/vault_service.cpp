@@ -63,6 +63,14 @@ SecretRecord VaultService::find(const std::string &name, const VaultMetadata &va
         throw SecretNotFound("Secret not found: " + name);
     return *it;
 }
+bool VaultService::contains_name(const std::string &name, const VaultMetadata &vault, const Bytes &key) const {
+    try {
+        (void)find(name, vault, &key);
+        return true;
+    } catch (const SecretNotFound &) {
+        return false;
+    }
+}
 void VaultService::add(const std::string &name, const std::string &plaintext, std::string password) {
     if (name.empty())
         throw NoxError("Secret name cannot be empty");
@@ -70,19 +78,23 @@ void VaultService::add(const std::string &name, const std::string &plaintext, st
     auto key = unlock(vault, password);
     Bytes plain(plaintext.begin(), plaintext.end());
     try {
+        if (contains_name(name, vault, key))
+            throw NoxError("A secret with this name already exists");
         const auto id = random_uuid();
         std::optional<std::string> public_name;
         std::optional<EncryptedValue> private_name;
+        std::optional<Bytes> name_hash;
         auto aad = CryptoService::secret_aad(vault.id, name);
         if (vault.private_metadata) {
             Bytes n(name.begin(), name.end());
             private_name = crypto_.encrypt(n, key, CryptoService::private_name_aad(vault.id, id));
+            name_hash = crypto_.private_name_hash(name, key);
             CryptoService::wipe(n);
             aad = CryptoService::private_secret_aad(vault.id, id);
         } else
             public_name = name;
         auto encrypted = crypto_.encrypt(plain, key, aad);
-        (void)api_.post("/secrets", serialize_secret(id, public_name, private_name, encrypted));
+        (void)api_.post("/secrets", serialize_secret(id, public_name, private_name, encrypted, name_hash));
     } catch (...) {
         CryptoService::wipe(plain);
         CryptoService::wipe(key);
@@ -118,7 +130,7 @@ void VaultService::update(const std::string &name, const std::string &plaintext,
         auto encrypted = crypto_.encrypt(plain, key,
                                          vault.private_metadata ? CryptoService::private_secret_aad(vault.id, record.id)
                                                                 : CryptoService::secret_aad(vault.id, name));
-        auto body = serialize_secret("", record.name, record.encrypted_name, encrypted);
+        auto body = serialize_secret("", record.name, record.encrypted_name, encrypted, record.name_hash);
         body["record_version"] = record.record_version;
         (void)api_.put("/secrets/" + record.id, body);
     } catch (...) {
@@ -159,14 +171,18 @@ void VaultService::rotate_password(std::string old_password, std::string new_pas
 }
 void VaultService::add_unlocked(const std::string &n, const std::string &p, const Bytes &k) {
     auto v = metadata();
+    if (contains_name(n, v, k))
+        throw NoxError("A secret with this name already exists");
     Bytes plain(p.begin(), p.end());
     const auto id = random_uuid();
     std::optional<std::string> pn;
     std::optional<EncryptedValue> en;
+    std::optional<Bytes> name_hash;
     auto aad = CryptoService::secret_aad(v.id, n);
     if (v.private_metadata) {
         Bytes nb(n.begin(), n.end());
         en = crypto_.encrypt(nb, k, CryptoService::private_name_aad(v.id, id));
+        name_hash = crypto_.private_name_hash(n, k);
         CryptoService::wipe(nb);
         aad = CryptoService::private_secret_aad(v.id, id);
     } else
@@ -174,7 +190,7 @@ void VaultService::add_unlocked(const std::string &n, const std::string &p, cons
     try {
         auto e = crypto_.encrypt(plain, k, aad);
         CryptoService::wipe(plain);
-        (void)api_.post("/secrets", serialize_secret(id, pn, en, e));
+        (void)api_.post("/secrets", serialize_secret(id, pn, en, e, name_hash));
     } catch (...) {
         CryptoService::wipe(plain);
         throw;
@@ -198,7 +214,7 @@ void VaultService::update_unlocked(const std::string &n, const std::string &p, c
         auto e = crypto_.encrypt(
             b, k, v.private_metadata ? CryptoService::private_secret_aad(v.id, r.id) : CryptoService::secret_aad(v.id, n));
         CryptoService::wipe(b);
-        auto body = serialize_secret("", r.name, r.encrypted_name, e);
+        auto body = serialize_secret("", r.name, r.encrypted_name, e, r.name_hash);
         body["record_version"] = r.record_version;
         (void)api_.put("/secrets/" + r.id, body);
     } catch (...) {

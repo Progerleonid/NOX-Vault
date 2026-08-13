@@ -2,6 +2,13 @@
 #include "nox/errors.hpp"
 #include <cstdlib>
 #include <fstream>
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#else
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 namespace nox {
 namespace {
@@ -45,6 +52,36 @@ long parse_positive(const std::string &value, const std::string &key) {
         throw ConfigurationError(key + " must be a positive integer");
     }
 }
+void replace_file(const std::filesystem::path &temporary, const std::filesystem::path &target) {
+#ifdef _WIN32
+    if (!MoveFileExW(temporary.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+        throw ConfigurationError("Unable to replace user configuration");
+#else
+    std::filesystem::rename(temporary, target);
+#endif
+}
+void write_private_file(const std::filesystem::path &path, const std::string &contents) {
+#ifdef _WIN32
+    std::ofstream stream(path, std::ios::trunc);
+    if (!stream || !(stream << contents))
+        throw ConfigurationError("Unable to write user configuration");
+#else
+    const auto descriptor = open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600);
+    if (descriptor < 0)
+        throw ConfigurationError("Unable to write user configuration");
+    std::size_t offset = 0;
+    while (offset < contents.size()) {
+        const auto written = write(descriptor, contents.data() + offset, contents.size() - offset);
+        if (written <= 0) {
+            close(descriptor);
+            throw ConfigurationError("Unable to write user configuration");
+        }
+        offset += static_cast<std::size_t>(written);
+    }
+    if (close(descriptor) != 0)
+        throw ConfigurationError("Unable to write user configuration");
+#endif
+}
 } // namespace
 ConfigManager::ConfigManager(std::optional<std::filesystem::path> directory)
     : directory_(directory.value_or(default_directory())) {
@@ -77,20 +114,15 @@ ClientConfig ConfigManager::load() const {
 }
 void ConfigManager::write_json(const std::filesystem::path &path, const nlohmann::json &j) const {
     std::filesystem::create_directories(directory_);
-    const auto temporary = path.string() + ".tmp";
-    {
-        std::ofstream stream(temporary, std::ios::trunc);
-        if (!stream)
-            throw ConfigurationError("Unable to write user configuration");
-        stream << j.dump(2) << '\n';
-    }
-    std::error_code replace_error;
-    std::filesystem::remove(path, replace_error);
-    std::filesystem::rename(temporary, path);
 #ifndef _WIN32
-    std::filesystem::permissions(path, std::filesystem::perms::owner_read | std::filesystem::perms::owner_write,
+    std::filesystem::permissions(directory_, std::filesystem::perms::owner_all,
                                  std::filesystem::perm_options::replace);
 #endif
+    const auto temporary = path.string() + ".tmp";
+    std::error_code remove_error;
+    std::filesystem::remove(temporary, remove_error);
+    write_private_file(temporary, j.dump(2) + '\n');
+    replace_file(temporary, path);
 }
 void ConfigManager::set(const std::string &key, const std::string &value) const {
     auto j = read_json(config_path());

@@ -2,6 +2,10 @@
 #include "nox/errors.hpp"
 #include "nox/models.hpp"
 #include <fstream>
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#endif
 
 namespace nox {
 namespace {
@@ -26,6 +30,14 @@ VaultMetadata parse_header_vault(const nlohmann::json &h) {
                         {"kdf_mem_limit", h.at("kdf_mem_limit")},
                         {"private_metadata", h.at("private_metadata")}};
     return parse_vault(j);
+}
+void replace_file(const std::filesystem::path &temporary, const std::filesystem::path &target) {
+#ifdef _WIN32
+    if (!MoveFileExW(temporary.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+        throw NoxError("Unable to replace backup file");
+#else
+    std::filesystem::rename(temporary, target);
+#endif
 }
 } // namespace
 void BackupService::export_file(const std::filesystem::path &path, std::string password) const {
@@ -69,9 +81,7 @@ void BackupService::export_file(const std::filesystem::path &path, std::string p
         if (!f)
             throw NoxError("Unable to write backup file");
     }
-    std::error_code ec;
-    std::filesystem::remove(path, ec);
-    std::filesystem::rename(temporary, path);
+    replace_file(temporary, path);
 }
 void BackupService::import_file(const std::filesystem::path &path, std::string password, bool replace) const {
     std::error_code ec;

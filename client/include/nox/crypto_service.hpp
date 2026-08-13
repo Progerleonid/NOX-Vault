@@ -17,6 +17,7 @@ class CryptoService {
     [[nodiscard]] static std::string private_secret_aad(const std::string &vault_id, const std::string &secret_id);
     [[nodiscard]] static std::string private_name_aad(const std::string &vault_id, const std::string &secret_id);
     [[nodiscard]] static std::string backup_aad(const std::string &user_id);
+    [[nodiscard]] Bytes private_name_hash(const std::string &name, const Bytes &key) const;
     static void wipe(Bytes &value) noexcept;
     static void wipe(std::string &value) noexcept;
 };

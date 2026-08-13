@@ -11,6 +11,7 @@ from app.schemas.common import Base64Bytes
 class SecretPayload(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     encrypted_name: Base64Bytes | None = None
+    name_hash: Base64Bytes | None = None
     ciphertext: Base64Bytes
     nonce: Base64Bytes
     algorithm: Literal["xchacha20poly1305"]
@@ -24,6 +25,10 @@ class SecretPayload(BaseModel):
             raise ValueError("secret nonce or ciphertext has an invalid size")
         if self.encrypted_name is not None and len(self.encrypted_name) < 45:
             raise ValueError("encrypted name has an invalid size")
+        if (self.encrypted_name is None and self.name_hash is not None) or (
+            self.name_hash is not None and len(self.name_hash) != 32
+        ):
+            raise ValueError("private secret name hash has an invalid size")
         return self
 
 
@@ -40,6 +45,7 @@ class SecretResponse(BaseModel):
     id: UUID
     name: str | None
     encrypted_name: bytes | None
+    name_hash: bytes | None
     ciphertext: bytes
     nonce: bytes
     algorithm: str
@@ -48,6 +54,6 @@ class SecretResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    @field_serializer("encrypted_name", "ciphertext", "nonce")
+    @field_serializer("encrypted_name", "name_hash", "ciphertext", "nonce")
     def serialize_bytes(self, value: bytes | None) -> str | None:
         return base64.b64encode(value).decode("ascii") if value is not None else None

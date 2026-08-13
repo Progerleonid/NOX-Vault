@@ -19,7 +19,7 @@ NOX VAULT is an educational multi-user secrets vault. Its C++20 client encrypts 
 - A random 256-bit Vault Key is wrapped by the KEK (envelope encryption).
 - XChaCha20-Poly1305 provides authenticated Secret, name and backup encryption with fresh nonces and contextual AAD.
 - Password rotation re-wraps the Vault Key without re-encrypting every Secret.
-- Optional private metadata encrypts Secret names locally.
+- Optional private metadata encrypts Secret names locally; keyed name hashes enforce per-vault uniqueness.
 - Optimistic record versions prevent silent stale updates.
 - A user-scoped local agent supports `unlock` across terminals with idle and absolute timeouts.
 - Encrypted export/import never creates a plaintext backup.
@@ -70,7 +70,7 @@ sha256sum --check SHA256SUMS --ignore-missing
 On Windows, PowerShell can verify an individual download:
 
 ```powershell
-Get-FileHash .\NOX-Vault-0.2.6-windows-x64.msi -Algorithm SHA256
+Get-FileHash .\NOX-Vault-0.2.7-windows-x64.msi -Algorithm SHA256
 ```
 
 Run the Windows MSI or macOS PKG and approve the administrator prompt. The
@@ -82,7 +82,7 @@ disable Gatekeeper globally.
 Install a Debian package with APT so its declared dependencies are resolved:
 
 ```bash
-sudo apt install ./nox-vault_0.2.6_amd64.deb
+sudo apt install ./nox-vault_0.2.7_amd64.deb
 ```
 
 Open a new terminal after installation, then run:
@@ -157,8 +157,8 @@ The client version has two deliberate source-of-truth declarations:
 that version:
 
 ```bash
-git tag -a v0.2.6 -m "NOX Vault 0.2.6"
-git push origin v0.2.6
+git tag -a v0.2.7 -m "NOX Vault 0.2.7"
+git push origin v0.2.7
 ```
 
 The release workflow rejects malformed or mismatched versions, builds and tests

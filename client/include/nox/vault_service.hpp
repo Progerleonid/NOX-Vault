@@ -33,5 +33,6 @@ class VaultService {
     [[nodiscard]] Bytes unlock(const VaultMetadata &vault, std::string &password) const;
     [[nodiscard]] SecretRecord find(const std::string &name, const VaultMetadata &vault,
                                     const Bytes *key = nullptr) const;
+    [[nodiscard]] bool contains_name(const std::string &name, const VaultMetadata &vault, const Bytes &key) const;
 };
 } // namespace nox

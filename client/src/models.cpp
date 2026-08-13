@@ -60,6 +60,8 @@ SecretRecord parse_secret(const nlohmann::json &j) {
             value.name = j.at("name").get<std::string>();
         if (j.contains("encrypted_name") && !j.at("encrypted_name").is_null())
             value.encrypted_name = unpack_encrypted_name(base64_decode(j.at("encrypted_name").get<std::string>()));
+        if (j.contains("name_hash") && !j.at("name_hash").is_null())
+            value.name_hash = base64_decode(j.at("name_hash").get<std::string>());
         if (value.name.has_value() == value.encrypted_name.has_value())
             throw CryptoError("Invalid secret metadata mode");
         value.value = {j.at("version").get<int>(), j.at("algorithm").get<std::string>(),
@@ -86,7 +88,8 @@ nlohmann::json serialize_vault_create(const EncryptedValue &key, const KdfParame
             {"private_metadata", private_metadata}};
 }
 nlohmann::json serialize_secret(const std::string &id, const std::optional<std::string> &name,
-                                const std::optional<EncryptedValue> &encrypted_name, const EncryptedValue &value) {
+                                const std::optional<EncryptedValue> &encrypted_name, const EncryptedValue &value,
+                                const std::optional<Bytes> &name_hash) {
     validate_format(value.version, value.algorithm);
     nlohmann::json result = {{"ciphertext", base64_encode(value.ciphertext)},
                              {"nonce", base64_encode(value.nonce)},
@@ -100,6 +103,8 @@ nlohmann::json serialize_secret(const std::string &id, const std::optional<std::
     } else if (encrypted_name) {
         result["name"] = nullptr;
         result["encrypted_name"] = base64_encode(pack_encrypted_name(*encrypted_name));
+        if (name_hash)
+            result["name_hash"] = base64_encode(*name_hash);
     } else
         throw CryptoError("Secret name is missing");
     return result;

@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = Field(default=15, ge=1, le=1440)
     cors_origins: list[str] = []
     max_request_size: int = Field(default=1_048_576, ge=1024)
+    max_restore_request_size: int = Field(default=100_663_296, ge=1024)
     login_rate_limit_attempts: int = Field(default=5, ge=1)
     login_rate_limit_window_seconds: int = Field(default=60, ge=1)
 
@@ -26,4 +27,3 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-
