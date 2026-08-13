@@ -68,6 +68,8 @@ jobs:
           elif [[ "$RUNNER_OS" == "Linux" ]]; then
             sudo apt-get update
             sudo apt-get install -y ninja-build rpm
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install autoconf automake libtool ninja
           fi
       - name: Restore vcpkg cache
         uses: actions/cache@v4
@@ -81,6 +83,11 @@ jobs:
           if [[ ! -f "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" ]]; then
             git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
           fi
+          # Keep vcpkg's scripts and ports on the manifest baseline. Building
+          # an old baseline with today's scripts can require a newer CMake and
+          # produces non-reproducible release failures.
+          git -C "$VCPKG_ROOT" fetch --depth 1 origin ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0
+          git -C "$VCPKG_ROOT" checkout --force ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             "$VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
           else
@@ -88,27 +95,32 @@ jobs:
           fi
       - name: Configure
         shell: bash
-        run: >-
-          cmake -S client -B client/build-release -G Ninja
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
-          -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}"
-          -DNOX_PACKAGE_ARCH="${{ matrix.arch }}"
-          -DCPACK_GENERATOR="${{ matrix.generators }}"
+        run: |
+          common_args=(
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+            -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}"
+            -DNOX_PACKAGE_ARCH="${{ matrix.arch }}"
+            -DCPACK_GENERATOR="${{ matrix.generators }}"
+          )
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            cmake -S client -B client/build-release -G "Visual Studio 17 2022" -A x64 "${common_args[@]}"
+          else
+            cmake -S client -B client/build-release -G Ninja -DCMAKE_BUILD_TYPE=Release "${common_args[@]}"
+          fi
       - name: Build and test
         shell: bash
         run: |
-          cmake --build client/build-release
-          ctest --test-dir client/build-release --output-on-failure
+          cmake --build client/build-release --config Release
+          ctest --test-dir client/build-release -C Release --output-on-failure
       - name: Build installers
         shell: bash
         run: |
           mkdir -p release-assets
-          cpack --config client/build-release/CPackConfig.cmake -B release-assets
+          cpack --config client/build-release/CPackConfig.cmake -C Release -B release-assets
       - name: Smoke-test installed tree
         shell: bash
         run: |
-          cmake --install client/build-release --prefix "$RUNNER_TEMP/nox-smoke"
+          cmake --install client/build-release --config Release --prefix "$RUNNER_TEMP/nox-smoke"
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             "$RUNNER_TEMP/nox-smoke/bin/nox.exe" --version
           else
