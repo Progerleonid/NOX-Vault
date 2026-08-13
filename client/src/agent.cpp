@@ -23,19 +23,6 @@
 #endif
 
 namespace nox {
-std::filesystem::path current_executable_path(const char *argv0) {
-#ifdef __linux__
-    (void)argv0;
-    std::error_code error;
-    auto path = std::filesystem::canonical("/proc/self/exe", error);
-    if (error || path.empty())
-        throw NoxError("Unable to resolve the current executable through /proc/self/exe");
-    return path;
-#else
-    return std::filesystem::absolute(argv0);
-#endif
-}
-
 namespace {
 constexpr std::uint32_t max_frame = 1024 * 1024;
 #ifdef _WIN32
@@ -63,6 +50,26 @@ bool read_all(Channel h, void *p, std::size_t n) {
 }
 Channel connect_channel() {
     return CreateFileA(endpoint().c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+}
+
+Channel connect_channel_with_retry() {
+    // The Windows server handles one pipe instance at a time. After a client
+    // disconnects there is a short interval before accept_channel() creates
+    // the next instance. In particular, ensure_running() probes the agent and
+    // the real request follows immediately, so retry that transient gap.
+    for (int i = 0; i < 50; ++i) {
+        auto h = connect_channel();
+        if (h != INVALID_HANDLE_VALUE)
+            return h;
+        const auto error = GetLastError();
+        if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PIPE_BUSY)
+            return INVALID_HANDLE_VALUE;
+        if (error == ERROR_PIPE_BUSY)
+            (void)WaitNamedPipeA(endpoint().c_str(), 50);
+        else
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return INVALID_HANDLE_VALUE;
 }
 bool same_user_peer(Channel h) {
     ULONG client_pid = 0;
@@ -236,6 +243,32 @@ void send_response(Channel h, const nlohmann::json &j) {
     (void)write_all(h, s.data(), s.size());
 }
 } // namespace
+std::filesystem::path current_executable_path(const char *argv0) {
+#ifdef __linux__
+    (void)argv0;
+    std::error_code error;
+    auto path = std::filesystem::canonical("/proc/self/exe", error);
+    if (error || path.empty())
+        throw NoxError("Unable to resolve the current executable through /proc/self/exe");
+    return path;
+#elif defined(_WIN32)
+    (void)argv0;
+    std::wstring path(260, L'\0');
+    for (;;) {
+        const auto size = GetModuleFileNameW(nullptr, path.data(), static_cast<DWORD>(path.size()));
+        if (size == 0)
+            throw NoxError("Unable to resolve the current executable");
+        if (size < path.size() - 1) {
+            path.resize(size);
+            return std::filesystem::path(path);
+        }
+        path.resize(path.size() * 2);
+    }
+#else
+    return std::filesystem::absolute(argv0);
+#endif
+}
+
 AgentClient::AgentClient(std::filesystem::path executable) : executable_(std::move(executable)) {
 }
 bool AgentClient::available() const noexcept {
@@ -278,7 +311,11 @@ void AgentClient::ensure_running() const {
         throw NoxError("Local vault agent did not start");
 }
 nlohmann::json AgentClient::request(const nlohmann::json &value) const {
+#ifdef _WIN32
+    auto h = connect_channel_with_retry();
+#else
     auto h = connect_channel();
+#endif
     if (!valid(h))
         throw NoxError("Vault is locked. Run 'nox unlock'.");
     try {
