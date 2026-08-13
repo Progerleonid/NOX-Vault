@@ -1,9 +1,14 @@
 cmake_minimum_required(VERSION 3.20)
-project(nox_vault_client VERSION 0.2.2 LANGUAGES CXX)
+project(nox_vault_client VERSION 0.2.3 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+if(MSVC)
+    # Release dependencies use the x64-windows-static vcpkg triplet. Match its
+    # /MT runtime so the executable is self-contained and ABI-compatible.
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
 set(NOX_DEFAULT_SERVER_URL "https://api.noxvault.tech" CACHE STRING "Official NOX server URL")
 option(NOX_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 
