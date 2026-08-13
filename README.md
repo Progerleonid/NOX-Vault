@@ -69,7 +69,7 @@ nox --version
 nox register
 ```
 
-Maintainers create all installers by pushing a version tag matching `client/CMakeLists.txt`, for example `git tag v0.2.3 && git push origin v0.2.3`. The release workflow builds and tests each native binary before publishing it.
+Maintainers create all installers by pushing a version tag matching `client/CMakeLists.txt`, for example `git tag v0.2.4 && git push origin v0.2.4`. The release workflow builds and tests each native binary before publishing it.
 
 ## Building from source
 

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(nox_vault_client VERSION 0.2.3 LANGUAGES CXX)
+project(nox_vault_client VERSION 0.2.4 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -105,10 +105,10 @@ if(WIN32)
     set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
     set(CPACK_NSIS_EXECUTABLES_DIRECTORY "bin")
 elseif(APPLE)
-    # The PKG installs /usr/local/bin/nox. TGZ is the no-root portable option.
-    set(CPACK_GENERATOR "productbuild;TGZ")
+    # The workflow builds the PKG directly with pkgbuild from the staged tree;
+    # TGZ remains the no-root portable option.
+    set(CPACK_GENERATOR "TGZ")
     set(CPACK_PACKAGING_INSTALL_PREFIX "/usr/local")
-    set(CPACK_PRODUCTBUILD_IDENTIFIER "tech.noxvault.cli")
 else()
     set(CPACK_GENERATOR "DEB;RPM;TGZ")
     set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")

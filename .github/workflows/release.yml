@@ -37,12 +37,12 @@ jobs:
             os: macos-15
             triplet: arm64-osx
             arch: arm64
-            generators: productbuild;TGZ
+            generators: TGZ
           - name: macOS Intel
             os: macos-15-intel
             triplet: x64-osx
             arch: x86_64
-            generators: productbuild;TGZ
+            generators: TGZ
 
     runs-on: ${{ matrix.os }}
     env:
@@ -118,6 +118,21 @@ jobs:
         run: |
           mkdir -p release-assets
           cpack --config client/build-release/CPackConfig.cmake -C Release -B release-assets
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            version="$(sed -nE 's/^project\(nox_vault_client VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' client/CMakeLists.txt)"
+            stage="$RUNNER_TEMP/nox-pkg-root"
+            cmake --install client/build-release --config Release --prefix "$stage"
+            package="release-assets/nox-vault-$version-Darwin-${{ matrix.arch }}.pkg"
+            pkgbuild \
+              --root "$stage" \
+              --identifier tech.noxvault.cli \
+              --version "$version" \
+              --install-location /usr/local \
+              "$package"
+            shasum -a 256 "$package" > "$package.sha256"
+            pkgutil --payload-files "$package" | grep -qx './bin/nox'
+            test "$(stat -f %z "$package")" -gt 100000
+          fi
       - name: Smoke-test installed tree
         shell: bash
         run: |
