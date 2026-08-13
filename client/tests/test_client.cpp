@@ -9,6 +9,15 @@
 #include <thread>
 
 using namespace nox;
+
+#ifdef __linux__
+TEST_CASE("Linux resolves the running executable through procfs") {
+    std::error_code error;
+    const auto expected = std::filesystem::canonical("/proc/self/exe", error);
+    REQUIRE_FALSE(error);
+    REQUIRE(current_executable_path("intentionally-wrong-argv-zero") == expected);
+}
+#endif
 TEST_CASE("encryption roundtrips empty long and Unicode values") {
     CryptoService crypto;
     const auto key = crypto.random_vault_key();

@@ -23,6 +23,19 @@
 #endif
 
 namespace nox {
+std::filesystem::path current_executable_path(const char *argv0) {
+#ifdef __linux__
+    (void)argv0;
+    std::error_code error;
+    auto path = std::filesystem::canonical("/proc/self/exe", error);
+    if (error || path.empty())
+        throw NoxError("Unable to resolve the current executable through /proc/self/exe");
+    return path;
+#else
+    return std::filesystem::absolute(argv0);
+#endif
+}
+
 namespace {
 constexpr std::uint32_t max_frame = 1024 * 1024;
 #ifdef _WIN32

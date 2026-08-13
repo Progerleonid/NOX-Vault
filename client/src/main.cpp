@@ -167,7 +167,7 @@ int main(int argc, char **argv) {
             return 0;
         }
         auto cfg = config.load();
-        nox::AgentClient agent(std::filesystem::absolute(argv[0]));
+        nox::AgentClient agent(nox::current_executable_path(argv[0]));
         if (*lock) {
             if (agent.available())
                 (void)agent.request({{"op", "lock"}});

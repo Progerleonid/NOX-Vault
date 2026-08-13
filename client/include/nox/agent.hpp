@@ -6,6 +6,8 @@
 #include <string>
 
 namespace nox {
+std::filesystem::path current_executable_path(const char *argv0);
+
 class AgentClient {
   public:
     explicit AgentClient(std::filesystem::path executable);
