@@ -163,7 +163,9 @@ git push origin v0.2.5
 
 The release workflow rejects malformed or mismatched versions, builds and tests
 all four platform artifacts, verifies their basic package contents, creates
-`SHA256SUMS`, and publishes only after every build succeeds. Signing hooks are
+`SHA256SUMS`, and publishes only after every build succeeds. Re-running an
+existing version replaces same-named release assets but preserves unrelated
+legacy files. Signing hooks are
 kept disabled until Windows and Apple signing credentials are configured. The
 repository variables `ENABLE_WINDOWS_SIGNING` and `ENABLE_APPLE_SIGNING` are
 guard rails: setting either to `true` intentionally fails the release until its

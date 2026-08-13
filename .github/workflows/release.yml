@@ -8,9 +8,6 @@ on:
 permissions:
   contents: read
 
-env:
-  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
-
 jobs:
   version:
     runs-on: ubuntu-22.04
@@ -31,6 +28,8 @@ jobs:
       - uses: lukka/run-vcpkg@v11
         with:
           vcpkgGitCommitId: ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0
+      - name: Install build prerequisites
+        run: brew install autoconf automake libtool ninja
       - name: Configure
         shell: pwsh
         run: >-
@@ -69,8 +68,19 @@ jobs:
           if ($install.ExitCode -ne 0) { throw "MSI install failed with $($install.ExitCode)" }
           & "$env:ProgramFiles\NOX Vault\bin\nox.exe" --version
           & "$env:ProgramFiles\NOX Vault\bin\nox.exe" --help
-          $systemPath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
-          if (-not (($systemPath -split ';') -contains "$env:ProgramFiles\NOX Vault\bin")) {
+          & "$env:ProgramFiles\NOX Vault\bin\nox.exe" doctor
+          $systemPath = (Get-ItemProperty `
+            'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment' `
+            -Name Path).Path
+          $expectedPath = [IO.Path]::GetFullPath("$env:ProgramFiles\NOX Vault\bin").TrimEnd('\')
+          $registeredPaths = $systemPath -split ';' | ForEach-Object {
+            [Environment]::ExpandEnvironmentVariables($_).Trim().TrimEnd('\')
+          }
+          if (-not ($registeredPaths | Where-Object {
+            [string]::Equals($_, $expectedPath, [StringComparison]::OrdinalIgnoreCase)
+          })) {
+            Write-Host "Expected PATH entry: $expectedPath"
+            Write-Host "Machine PATH entries: $($registeredPaths -join ' | ')"
             throw 'MSI did not register NOX Vault in the machine PATH'
           }
           $uninstall = Start-Process msiexec.exe -ArgumentList @('/x', $msi, '/qn', '/norestart') -Wait -PassThru
@@ -223,7 +233,14 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create "${{ github.ref_name }}" release-assets/*
-          --verify-tag --generate-notes
-          --title "NOX Vault ${{ needs.version.outputs.version }}"
+        run: |
+          if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            gh release upload "${{ github.ref_name }}" release-assets/* --clobber
+            gh release edit "${{ github.ref_name }}" \
+              --title "NOX Vault ${{ needs.version.outputs.version }}" \
+              --latest
+          else
+            gh release create "${{ github.ref_name }}" release-assets/* \
+              --verify-tag --generate-notes \
+              --title "NOX Vault ${{ needs.version.outputs.version }}"
+          fi
