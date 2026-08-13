@@ -47,33 +47,9 @@ docker-compose.yml      local development stack
 docker-compose.prod.yml production stack
 ```
 
-## End-user installation
-
-Release builds contain the official endpoint `https://api.noxvault.tech`; normal users do not configure `server_url`. Download the newest file for your computer from the [GitHub Releases page](https://github.com/Progerleonid/NOX-Vault/releases/latest):
-
-| Platform | Download | Install |
-| --- | --- | --- |
-| Windows 10/11 x64 | `Windows-x86_64.exe` | Double-click the setup file, allow it to add NOX Vault to `PATH`, then open a new PowerShell window. |
-| macOS Apple Silicon | `Darwin-arm64.pkg` | Double-click the package and follow Installer. |
-| macOS Intel | `Darwin-x86_64.pkg` | Double-click the package and follow Installer. |
-| Ubuntu/Debian x64 | `Linux-x86_64.deb` | Double-click it in the software installer, or run `sudo apt install ./nox-vault-*.deb`. |
-| Fedora/RHEL x64 | `Linux-x86_64.rpm` | Double-click it in the software installer, or run `sudo dnf install ./nox-vault-*.rpm`. |
-| Linux ARM64 | `Linux-arm64.deb` or `.rpm` | Install it with the matching Debian/Fedora command above. |
-
-The installer contains the client and its required libraries; users do not need CMake, a compiler, vcpkg, curl or libsodium. One combined `SHA256SUMS.txt` is attached to the release for verification. The first unsigned builds may show an operating-system trust warning until Windows and Apple code-signing certificates are configured.
-
-After installation, open a new terminal and verify it:
-
-```bash
-nox --version
-nox register
-```
-
-Maintainers create all installers by pushing a version tag matching `client/CMakeLists.txt`, for example `git tag v0.2.5 && git push origin v0.2.5`. The release workflow builds and tests each native binary before publishing it.
-
 ## Building from source
 
-Most users should use a release installer above. The following is for contributors and unsupported platforms.
+NOX Vault is distributed as source code. Build the client locally with CMake and vcpkg.
 
 Ubuntu/Debian build prerequisites:
 
@@ -88,11 +64,8 @@ cmake -S client -B client/build -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$HOME/vcpkg/scripts/buildsystems/vcpkg.cmake"
 cmake --build client/build
 ctest --test-dir client/build --output-on-failure
-sudo cmake --install client/build --prefix /usr/local
-cd /tmp && nox --version
+./client/build/nox --version
 ```
-
-For a per-user install, use `--prefix "$HOME/.local"` and ensure `$HOME/.local/bin` is in `PATH`.
 
 Windows with Visual Studio 2022 and vcpkg:
 
@@ -103,10 +76,10 @@ cmake -S client -B client/build -A x64 `
   -DCMAKE_TOOLCHAIN_FILE="$env:USERPROFILE\vcpkg\scripts\buildsystems\vcpkg.cmake"
 cmake --build client/build --config Release
 ctest --test-dir client/build -C Release --output-on-failure
-cmake --install client/build --config Release --prefix "$env:LOCALAPPDATA\Programs\Nox"
+& ".\client\build\Release\nox.exe" --version
 ```
 
-Add `%LOCALAPPDATA%\Programs\Nox\bin` to the user `PATH` once, open a new terminal, then run `nox.exe --version` from any directory. The vcpkg manifest supplies CLI11, libcurl, nlohmann-json, libsodium and Catch2.
+The vcpkg manifest supplies CLI11, libcurl, nlohmann-json, libsodium and Catch2.
 
 ## First use and normal workflow
 
@@ -175,4 +148,4 @@ The script creates a record whose representation does not contain the known plai
 - Login rate limiting is in-process, not a distributed production-grade limiter.
 - Secure wiping is best effort because standard C++/JSON/OS components can copy or page memory.
 - The server can delete, replay or withhold ciphertext; this design is not a complete rollback-resistant protocol.
-- Release installers are not code-signed yet, and automatic updates are not implemented.
+- Automatic updates are not implemented.
