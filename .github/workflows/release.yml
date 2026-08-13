@@ -28,8 +28,6 @@ jobs:
       - uses: lukka/run-vcpkg@v11
         with:
           vcpkgGitCommitId: ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0
-      - name: Install build prerequisites
-        run: brew install autoconf automake libtool ninja
       - name: Configure
         shell: pwsh
         run: >-
@@ -103,6 +101,8 @@ jobs:
       - uses: lukka/run-vcpkg@v11
         with:
           vcpkgGitCommitId: ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0
+      - name: Install build prerequisites
+        run: brew install autoconf automake libtool ninja
       - name: Configure
         run: >-
           cmake -S client -B client/build-release -G Ninja
