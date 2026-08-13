@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(nox_vault_client VERSION 0.2.4 LANGUAGES CXX)
+project(nox_vault_client VERSION 0.2.5 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -91,26 +91,24 @@ set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Zero-knowledge command-line secrets vault
 set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/Progerleonid/NOX-Vault")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_INSTALL_DIRECTORY "NOX Vault")
-set(CPACK_PACKAGE_CHECKSUM "SHA256")
 set(CPACK_PACKAGE_FILE_NAME "nox-vault-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${NOX_PACKAGE_ARCH_LOWER}")
 set(CPACK_STRIP_FILES TRUE)
 
 if(WIN32)
     # NSIS produces a familiar setup.exe and can add the installation's bin
     # directory to the system PATH. It is removed again on uninstall.
-    set(CPACK_GENERATOR "NSIS;ZIP")
+    set(CPACK_GENERATOR "NSIS")
     set(CPACK_NSIS_DISPLAY_NAME "NOX Vault")
     set(CPACK_NSIS_PACKAGE_NAME "NOX Vault")
     set(CPACK_NSIS_MODIFY_PATH ON)
     set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
     set(CPACK_NSIS_EXECUTABLES_DIRECTORY "bin")
 elseif(APPLE)
-    # The workflow builds the PKG directly with pkgbuild from the staged tree;
-    # TGZ remains the no-root portable option.
+    # The workflow builds the PKG directly with pkgbuild from the staged tree.
     set(CPACK_GENERATOR "TGZ")
     set(CPACK_PACKAGING_INSTALL_PREFIX "/usr/local")
 else()
-    set(CPACK_GENERATOR "DEB;RPM;TGZ")
+    set(CPACK_GENERATOR "DEB;RPM")
     set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
     set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
     set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")

@@ -60,7 +60,7 @@ Release builds contain the official endpoint `https://api.noxvault.tech`; normal
 | Fedora/RHEL x64 | `Linux-x86_64.rpm` | Double-click it in the software installer, or run `sudo dnf install ./nox-vault-*.rpm`. |
 | Linux ARM64 | `Linux-arm64.deb` or `.rpm` | Install it with the matching Debian/Fedora command above. |
 
-The installer contains the client and its required libraries; users do not need CMake, a compiler, vcpkg, curl or libsodium. Portable `.zip`/`.tar.gz` archives and `SHA256SUMS.txt` are attached to the same release. The first unsigned builds may show an operating-system trust warning until Windows and Apple code-signing certificates are configured.
+The installer contains the client and its required libraries; users do not need CMake, a compiler, vcpkg, curl or libsodium. One combined `SHA256SUMS.txt` is attached to the release for verification. The first unsigned builds may show an operating-system trust warning until Windows and Apple code-signing certificates are configured.
 
 After installation, open a new terminal and verify it:
 
@@ -69,7 +69,7 @@ nox --version
 nox register
 ```
 
-Maintainers create all installers by pushing a version tag matching `client/CMakeLists.txt`, for example `git tag v0.2.4 && git push origin v0.2.4`. The release workflow builds and tests each native binary before publishing it.
+Maintainers create all installers by pushing a version tag matching `client/CMakeLists.txt`, for example `git tag v0.2.5 && git push origin v0.2.5`. The release workflow builds and tests each native binary before publishing it.
 
 ## Building from source
 

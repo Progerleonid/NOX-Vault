@@ -21,18 +21,18 @@ jobs:
             os: windows-2022
             triplet: x64-windows-static
             arch: x86_64
-            generators: NSIS;ZIP
+            generators: NSIS
           - name: Linux x64
             # Build on the oldest supported Ubuntu runner for broader glibc compatibility.
             os: ubuntu-22.04
             triplet: x64-linux
             arch: x86_64
-            generators: DEB;RPM;TGZ
+            generators: DEB;RPM
           - name: Linux ARM64
             os: ubuntu-24.04-arm
             triplet: arm64-linux
             arch: arm64
-            generators: DEB;RPM;TGZ
+            generators: DEB;RPM
           - name: macOS Apple Silicon
             os: macos-15
             triplet: arm64-osx
@@ -132,6 +132,7 @@ jobs:
             shasum -a 256 "$package" > "$package.sha256"
             pkgutil --payload-files "$package" | grep -qx './bin/nox'
             test "$(stat -f %z "$package")" -gt 100000
+            rm -f release-assets/*.tar.gz release-assets/*.sha256
           fi
       - name: Smoke-test installed tree
         shell: bash
@@ -161,12 +162,9 @@ jobs:
           name: installers-${{ matrix.triplet }}
           path: |
             release-assets/*.exe
-            release-assets/*.zip
             release-assets/*.deb
             release-assets/*.rpm
             release-assets/*.pkg
-            release-assets/*.tar.gz
-            release-assets/*.sha256
           if-no-files-found: error
 
   publish:
