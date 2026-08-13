@@ -55,7 +55,9 @@ SecretRecord VaultService::find(const std::string &name, const VaultMetadata &va
         auto p = crypto_.decrypt(*r.encrypted_name, *key, CryptoService::private_name_aad(vault.id, r.id));
         std::string decoded(p.begin(), p.end());
         CryptoService::wipe(p);
-        return decoded == name;
+        const bool matches = decoded == name;
+        CryptoService::wipe(decoded);
+        return matches;
     });
     if (it == records.end())
         throw SecretNotFound("Secret not found: " + name);
@@ -169,9 +171,14 @@ void VaultService::add_unlocked(const std::string &n, const std::string &p, cons
         aad = CryptoService::private_secret_aad(v.id, id);
     } else
         pn = n;
-    auto e = crypto_.encrypt(plain, k, aad);
-    CryptoService::wipe(plain);
-    (void)api_.post("/secrets", serialize_secret(id, pn, en, e));
+    try {
+        auto e = crypto_.encrypt(plain, k, aad);
+        CryptoService::wipe(plain);
+        (void)api_.post("/secrets", serialize_secret(id, pn, en, e));
+    } catch (...) {
+        CryptoService::wipe(plain);
+        throw;
+    }
 }
 std::string VaultService::get_unlocked(const std::string &n, const Bytes &k) {
     auto v = metadata();
@@ -187,12 +194,17 @@ void VaultService::update_unlocked(const std::string &n, const std::string &p, c
     auto v = metadata();
     auto r = find(n, v, &k);
     Bytes b(p.begin(), p.end());
-    auto e = crypto_.encrypt(
-        b, k, v.private_metadata ? CryptoService::private_secret_aad(v.id, r.id) : CryptoService::secret_aad(v.id, n));
-    CryptoService::wipe(b);
-    auto body = serialize_secret("", r.name, r.encrypted_name, e);
-    body["record_version"] = r.record_version;
-    (void)api_.put("/secrets/" + r.id, body);
+    try {
+        auto e = crypto_.encrypt(
+            b, k, v.private_metadata ? CryptoService::private_secret_aad(v.id, r.id) : CryptoService::secret_aad(v.id, n));
+        CryptoService::wipe(b);
+        auto body = serialize_secret("", r.name, r.encrypted_name, e);
+        body["record_version"] = r.record_version;
+        (void)api_.put("/secrets/" + r.id, body);
+    } catch (...) {
+        CryptoService::wipe(b);
+        throw;
+    }
 }
 void VaultService::remove_unlocked(const std::string &n, const Bytes &k) {
     auto v = metadata();

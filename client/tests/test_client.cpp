@@ -84,7 +84,8 @@ TEST_CASE("local agent rejects malformed keys and enforces absolute timeout") {
         (void)client.request({{"op", "lock"}});
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
-    std::thread server([] { REQUIRE(run_agent(10, 1) == 0); });
+    int server_result = -1;
+    std::thread server([&] { server_result = run_agent(10, 1); });
     bool agent_available = false;
     for (int i = 0; i < 250 && !(agent_available = client.available()); ++i) {
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -93,15 +94,41 @@ TEST_CASE("local agent rejects malformed keys and enforces absolute timeout") {
         server.detach();
         FAIL("Local agent did not become available within 5 seconds");
     }
-    REQUIRE_THROWS_AS(client.request({{"op", "unlock"}, {"key", base64_encode(Bytes{1, 2})}}), NoxError);
+    bool malformed_rejected = false;
+    bool expired = false;
+    bool communication_ok = true;
     CryptoService crypto;
     auto key = crypto.random_vault_key();
-    (void)client.request({{"op", "unlock"}, {"key", base64_encode(key)}});
-    std::this_thread::sleep_for(std::chrono::milliseconds(2200));
-    REQUIRE_FALSE(client.request({{"op", "status"}}).at("unlocked").get<bool>());
-    (void)client.request({{"op", "lock"}});
+    try {
+        try {
+            (void)client.request({{"op", "unlock"}, {"key", base64_encode(Bytes{1, 2})}});
+        } catch (const NoxError &) {
+            malformed_rejected = true;
+        }
+        (void)client.request({{"op", "unlock"}, {"key", base64_encode(key)}});
+        for (int i = 0; i < 50 && !expired; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            expired = !client.request({{"op", "status"}}).at("unlocked").get<bool>();
+        }
+    } catch (...) {
+        communication_ok = false;
+    }
+    for (int i = 0; i < 20; ++i) {
+        try {
+            (void)client.request({{"op", "lock"}});
+            break;
+        } catch (...) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(25));
+        }
+    }
     server.join();
+    for (int i = 0; i < 100 && client.available(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     CryptoService::wipe(key);
+    REQUIRE(malformed_rejected);
+    REQUIRE(expired);
+    REQUIRE(communication_ok);
+    REQUIRE(server_result == 0);
 }
 TEST_CASE("password rewrap preserves the vault key and secret ciphertext") {
     CryptoService crypto;
@@ -125,7 +152,8 @@ TEST_CASE("local agent supports cross-client unlock timeout and explicit lock") 
         (void)first.request({{"op", "lock"}});
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
-    std::thread server([] { REQUIRE(run_agent(1, 5) == 0); });
+    int server_result = -1;
+    std::thread server([&] { server_result = run_agent(1, 5); });
     bool agent_available = false;
     for (int i = 0; i < 250 && !(agent_available = first.available()); ++i) {
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -136,15 +164,43 @@ TEST_CASE("local agent supports cross-client unlock timeout and explicit lock") 
     }
     CryptoService crypto;
     auto key = crypto.random_vault_key();
-    (void)first.request({{"op", "unlock"}, {"key", base64_encode(key)}});
     AgentClient second(std::filesystem::path("unused"));
-    REQUIRE(second.available());
-    REQUIRE(second.request({{"op", "status"}}).at("unlocked").get<bool>());
-    std::this_thread::sleep_for(std::chrono::milliseconds(2200));
-    REQUIRE_FALSE(second.request({{"op", "status"}}).at("unlocked").get<bool>());
-    (void)second.request({{"op", "lock"}});
+    bool second_available = false, second_unlocked = false, expired = false, communication_ok = true;
+    try {
+        (void)first.request({{"op", "unlock"}, {"key", base64_encode(key)}});
+        for (int i = 0; i < 50 && !(second_available = second.available()); ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        for (int i = 0; i < 50 && !second_unlocked; ++i) {
+            try {
+                second_unlocked = second.request({{"op", "status"}}).at("unlocked").get<bool>();
+            } catch (const NoxError &) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+        }
+        for (int i = 0; i < 50 && !expired; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            expired = !second.request({{"op", "status"}}).at("unlocked").get<bool>();
+        }
+    } catch (...) {
+        communication_ok = false;
+    }
+    for (int i = 0; i < 20; ++i) {
+        try {
+            (void)second.request({{"op", "lock"}});
+            break;
+        } catch (...) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(25));
+        }
+    }
     server.join();
+    for (int i = 0; i < 100 && second.available(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     CryptoService::wipe(key);
+    REQUIRE(second_available);
+    REQUIRE(second_unlocked);
+    REQUIRE(expired);
+    REQUIRE(communication_ok);
+    REQUIRE(server_result == 0);
 }
 TEST_CASE("config defaults override reset and URL policy") {
     auto directory = std::filesystem::temp_directory_path() / "nox-client-test-config";
@@ -159,5 +215,8 @@ TEST_CASE("config defaults override reset and URL policy") {
     REQUIRE_NOTHROW(ConfigManager::validate_server_url("http://localhost:8000"));
     REQUIRE_THROWS_AS(ConfigManager::validate_server_url("http://example.com"), ConfigurationError);
     REQUIRE_THROWS_AS(ConfigManager::validate_server_url("http://localhost.evil"), ConfigurationError);
+    REQUIRE_THROWS_AS(ConfigManager::validate_server_url("https://user@example.com"), ConfigurationError);
+    REQUIRE_THROWS_AS(ConfigManager::validate_server_url("https://example.com/path"), ConfigurationError);
+    REQUIRE_THROWS_AS(ConfigManager::validate_server_url("https://example.com?query"), ConfigurationError);
     std::filesystem::remove_all(directory);
 }

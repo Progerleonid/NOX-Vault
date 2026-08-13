@@ -35,8 +35,10 @@ void copy_to_clipboard(const std::string &value) {
     }
     CloseClipboard();
 #elif defined(__APPLE__)
+    (void)value;
     throw NoxError("Native macOS clipboard backend is unavailable in this build");
 #else
+    (void)value;
     throw NoxError("No safe native clipboard backend is available on this Unix platform");
 #endif
 }

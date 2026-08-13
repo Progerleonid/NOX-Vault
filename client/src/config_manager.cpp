@@ -136,16 +136,24 @@ bool ConfigManager::has_server_override() const {
     return load().server_url.has_value();
 }
 void ConfigManager::validate_server_url(const std::string &url) {
+    if (url.empty() || url.find_first_of("\r\n") != std::string::npos)
+        throw ConfigurationError("Invalid server URL");
     const bool https = url.starts_with("https://");
-    const auto authority_end = url.find_first_of("/?#", 7);
-    const auto authority = url.substr(7, authority_end == std::string::npos ? std::string::npos : authority_end - 7);
+    const auto scheme_size = https ? 8U : 7U;
+    const auto authority_end = url.find_first_of("/?#", scheme_size);
+    const auto authority = url.substr(scheme_size,
+                                      authority_end == std::string::npos ? std::string::npos
+                                                                         : authority_end - scheme_size);
     const bool local = url.starts_with("http://") &&
                        (authority == "localhost" || authority.starts_with("localhost:") || authority == "127.0.0.1" ||
                         authority.starts_with("127.0.0.1:") || authority == "[::1]" || authority.starts_with("[::1]:"));
+    if (authority.empty() || authority.find('@') != std::string::npos ||
+        authority.find_first_of(" \t") != std::string::npos)
+        throw ConfigurationError("Server URL must contain a valid authority without user information");
+    if (authority_end != std::string::npos)
+        throw ConfigurationError("Server URL must not contain a path, query, or fragment");
     if (!https && !local)
         throw ConfigurationError("Server URL must use HTTPS; HTTP is allowed only for loopback development");
-    if (url.find_first_of("\r\n") != std::string::npos)
-        throw ConfigurationError("Invalid server URL");
 }
 std::optional<AuthSession> ConfigManager::load_session() const {
     auto j = read_json(session_path());

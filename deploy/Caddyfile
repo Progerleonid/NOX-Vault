@@ -1,0 +1,17 @@
+{
+    email {$ACME_EMAIL}
+}
+
+api.noxvault.tech {
+    encode zstd gzip
+    reverse_proxy api:8000
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        -Server
+    }
+}
+
+noxvault.tech {
+    redir https://api.noxvault.tech/docs 308
+}

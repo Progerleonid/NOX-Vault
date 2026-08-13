@@ -13,7 +13,7 @@ services:
       timeout: 5s
       retries: 10
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
 
   api:
     build:
@@ -30,7 +30,7 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "8000:8000"
+      - "127.0.0.1:${API_PORT:-8000}:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
       interval: 10s
@@ -39,4 +39,3 @@ services:
 
 volumes:
   postgres_data:
-

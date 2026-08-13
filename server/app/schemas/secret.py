@@ -1,5 +1,6 @@
 import base64
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
@@ -12,8 +13,8 @@ class SecretPayload(BaseModel):
     encrypted_name: Base64Bytes | None = None
     ciphertext: Base64Bytes
     nonce: Base64Bytes
-    algorithm: str = Field(min_length=1, max_length=50)
-    version: int = Field(ge=1)
+    algorithm: Literal["xchacha20poly1305"]
+    version: Literal[1]
 
     @model_validator(mode="after")
     def exactly_one_name(self) -> "SecretPayload":

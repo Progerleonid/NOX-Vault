@@ -9,4 +9,9 @@ htmlcov/
 .idea/
 .vscode/
 server/.env
+deploy/.env.production
 client/build*/
+client/install*/
+release-assets/
+.release-vcpkg/
+.vcpkg-binary-cache/

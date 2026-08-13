@@ -1,3 +1,4 @@
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
@@ -11,8 +12,8 @@ class RestoreSecret(BaseModel):
     encrypted_name: Base64Bytes | None = None
     ciphertext: Base64Bytes
     nonce: Base64Bytes
-    algorithm: str = Field(min_length=1, max_length=50)
-    version: int = Field(ge=1)
+    algorithm: Literal["xchacha20poly1305"]
+    version: Literal[1]
     record_version: int = Field(ge=1)
 
     @model_validator(mode="after")
@@ -23,14 +24,14 @@ class RestoreSecret(BaseModel):
 
 
 class RestoreRequest(BaseModel):
-    format_version: int = Field(ge=1, le=1)
+    format_version: Literal[1]
     source_user_id: UUID
     replace: bool = False
     vault_id: UUID
     encrypted_vault_key: Base64Bytes
     vault_key_nonce: Base64Bytes
     kdf_salt: Base64Bytes
-    kdf_algorithm: str = Field(min_length=1, max_length=50)
+    kdf_algorithm: Literal["argon2id"]
     kdf_ops_limit: int = Field(gt=0)
     kdf_mem_limit: int = Field(gt=0)
     private_metadata: bool

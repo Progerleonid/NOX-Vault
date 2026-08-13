@@ -1,5 +1,6 @@
 import base64
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
@@ -11,7 +12,7 @@ class VaultCreate(BaseModel):
     encrypted_vault_key: Base64Bytes
     vault_key_nonce: Base64Bytes
     kdf_salt: Base64Bytes
-    kdf_algorithm: str = Field(min_length=1, max_length=50)
+    kdf_algorithm: Literal["argon2id"]
     kdf_ops_limit: int = Field(gt=0)
     kdf_mem_limit: int = Field(gt=0)
     private_metadata: bool = False
@@ -29,7 +30,7 @@ class VaultKeyUpdate(BaseModel):
     encrypted_vault_key: Base64Bytes
     vault_key_nonce: Base64Bytes
     kdf_salt: Base64Bytes
-    kdf_algorithm: str = Field(min_length=1, max_length=50)
+    kdf_algorithm: Literal["argon2id"]
     kdf_ops_limit: int = Field(gt=0)
     kdf_mem_limit: int = Field(gt=0)
 

@@ -110,3 +110,27 @@ def test_user_isolation(client, user_factory, vault_payload, secret_payload):
     assert client.put(f"/api/v1/secrets/{secret_id}", json=update, headers=headers_b).status_code == 404
     assert client.delete(f"/api/v1/secrets/{secret_id}", headers=headers_b).status_code == 404
     assert client.get("/api/v1/secrets", headers=headers_b).json() == []
+
+
+def test_rejects_unsupported_crypto_contracts(client, user_factory, vault_payload, secret_payload):
+    _, headers = user_factory("formats@example.com")
+    bad_kdf = {**vault_payload, "kdf_algorithm": "pbkdf2"}
+    assert client.post("/api/v1/vault", json=bad_kdf, headers=headers).status_code == 422
+    assert client.post("/api/v1/vault", json=vault_payload, headers=headers).status_code == 201
+    bad_algorithm = {**secret_payload, "algorithm": "aes-gcm"}
+    bad_version = {**secret_payload, "version": 2}
+    assert client.post("/api/v1/secrets", json=bad_algorithm, headers=headers).status_code == 422
+    assert client.post("/api/v1/secrets", json=bad_version, headers=headers).status_code == 422
+
+
+def test_api_payload_is_opaque_and_has_no_client_keys(client, user_factory, vault_payload, secret_payload):
+    _, headers = user_factory("opaque@example.com")
+    known_plaintext = "DAY4-PLAINTEXT-MUST-NOT-REACH-SERVER"
+    forbidden_fields = {"master_password", "vault_key", "plaintext", "secret_value"}
+    assert forbidden_fields.isdisjoint(vault_payload)
+    assert forbidden_fields.isdisjoint(secret_payload)
+    assert known_plaintext not in str(vault_payload)
+    assert known_plaintext not in str(secret_payload)
+    client.post("/api/v1/vault", json=vault_payload, headers=headers)
+    stored = client.post("/api/v1/secrets", json=secret_payload, headers=headers).json()
+    assert known_plaintext not in str(stored)

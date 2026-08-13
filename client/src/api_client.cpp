@@ -6,9 +6,14 @@
 
 namespace nox {
 namespace {
+constexpr std::size_t max_response_size = 16U * 1024U * 1024U;
 size_t receive(char *data, size_t size, size_t count, void *target) {
-    static_cast<std::string *>(target)->append(data, size * count);
-    return size * count;
+    const auto bytes = size * count;
+    auto *response = static_cast<std::string *>(target);
+    if (bytes > max_response_size || response->size() > max_response_size - bytes)
+        return 0;
+    response->append(data, bytes);
+    return bytes;
 }
 struct CurlDeleter {
     void operator()(CURL *handle) const {
@@ -64,6 +69,9 @@ nlohmann::json ApiClient::request(const std::string &method, const std::string &
     curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT, timeout_seconds_);
     curl_easy_setopt(curl.get(), CURLOPT_CONNECTTIMEOUT, timeout_seconds_);
     curl_easy_setopt(curl.get(), CURLOPT_FOLLOWLOCATION, 0L);
+    curl_easy_setopt(curl.get(), CURLOPT_PROTOCOLS_STR, "https,http");
+    curl_easy_setopt(curl.get(), CURLOPT_REDIR_PROTOCOLS_STR, "https");
+    curl_easy_setopt(curl.get(), CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(curl.get(), CURLOPT_SSL_VERIFYPEER, 1L);
     curl_easy_setopt(curl.get(), CURLOPT_SSL_VERIFYHOST, 2L);
     curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, receive);
@@ -75,6 +83,8 @@ nlohmann::json ApiClient::request(const std::string &method, const std::string &
     if (verbose_)
         std::cerr << "[verbose] " << method << ' ' << url << " (sensitive payload redacted)\n";
     const auto result = curl_easy_perform(curl.get());
+    if (result == CURLE_WRITE_ERROR && response.size() >= max_response_size)
+        throw ServerError(0, "response_too_large", "Server response exceeded the client limit");
     if (result != CURLE_OK)
         throw NetworkError(std::string("Network request failed: ") + curl_easy_strerror(result));
     long status = 0;
