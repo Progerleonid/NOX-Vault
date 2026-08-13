@@ -1,0 +1,229 @@
+name: Release installers
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+env:
+  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+
+jobs:
+  version:
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        shell: bash
+        run: echo "version=$(python3 scripts/check_release_version.py '${{ github.ref_name }}' .)" >> "$GITHUB_OUTPUT"
+
+  windows:
+    needs: version
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0
+      - name: Configure
+        shell: pwsh
+        run: >-
+          cmake -S client -B client/build-release -A x64
+          -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          -DVCPKG_MANIFEST_FEATURES=tests
+          -DVCPKG_TARGET_TRIPLET=x64-windows-static
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+      - name: Build and test
+        run: |
+          cmake --build client/build-release --config Release --parallel
+          ctest --test-dir client/build-release -C Release --output-on-failure
+          client\build-release\Release\nox.exe --version
+          client\build-release\Release\nox.exe --help
+      - name: Stage install
+        run: cmake --install client/build-release --config Release --prefix "${{ runner.temp }}\nox-stage"
+      - name: Install WiX
+        run: dotnet tool install --global wix --version 5.0.2
+      - name: Build MSI
+        shell: pwsh
+        run: |
+          wix extension add --global WixToolset.UI.wixext/5.0.2
+          wix build packaging/windows/NOXVault.wxs `
+            -arch x64 -ext WixToolset.UI.wixext `
+            -d ProductVersion="${{ needs.version.outputs.version }}" `
+            -d StageDir="${{ runner.temp }}\nox-stage" `
+            -d ProjectDir="${{ github.workspace }}" `
+            -d AssetsDir="${{ github.workspace }}\packaging\assets" `
+            -d LicenseRtf="${{ github.workspace }}\packaging\windows\license.rtf" `
+            -o "NOX-Vault-${{ needs.version.outputs.version }}-windows-x64.msi"
+      - name: Smoke-test MSI install and uninstall
+        shell: pwsh
+        run: |
+          $msi = (Resolve-Path "NOX-Vault-${{ needs.version.outputs.version }}-windows-x64.msi").Path
+          $install = Start-Process msiexec.exe -ArgumentList @('/i', $msi, '/qn', '/norestart') -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "MSI install failed with $($install.ExitCode)" }
+          & "$env:ProgramFiles\NOX Vault\bin\nox.exe" --version
+          & "$env:ProgramFiles\NOX Vault\bin\nox.exe" --help
+          $systemPath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+          if (-not (($systemPath -split ';') -contains "$env:ProgramFiles\NOX Vault\bin")) {
+            throw 'MSI did not register NOX Vault in the machine PATH'
+          }
+          $uninstall = Start-Process msiexec.exe -ArgumentList @('/x', $msi, '/qn', '/norestart') -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "MSI uninstall failed with $($uninstall.ExitCode)" }
+          if (Test-Path "$env:ProgramFiles\NOX Vault\bin\nox.exe") { throw 'MSI uninstall left nox.exe behind' }
+      - name: Future Windows signing hook
+        if: ${{ vars.ENABLE_WINDOWS_SIGNING == 'true' }}
+        run: echo "Signing was enabled, but the certificate-backed signing command must be configured first." && exit 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: NOX-Vault-${{ needs.version.outputs.version }}-windows-x64.msi
+          if-no-files-found: error
+
+  macos:
+    needs: version
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0
+      - name: Configure
+        run: >-
+          cmake -S client -B client/build-release -G Ninja
+          -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          -DVCPKG_MANIFEST_FEATURES=tests
+          -DVCPKG_TARGET_TRIPLET=arm64-osx-release
+          -DVCPKG_OVERLAY_TRIPLETS="${{ github.workspace }}/packaging/triplets"
+          -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
+          -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+      - name: Build and test
+        run: |
+          cmake --build client/build-release --parallel
+          ctest --test-dir client/build-release --output-on-failure
+          client/build-release/nox --version
+          client/build-release/nox --help
+          test "$(lipo -archs client/build-release/nox)" = "arm64"
+      - name: Stage and build package
+        run: |
+          cmake --install client/build-release --prefix "$RUNNER_TEMP/nox-stage"
+          chmod +x packaging/macos/build-package.sh packaging/macos/uninstall-nox-vault
+          packaging/macos/build-package.sh "${{ needs.version.outputs.version }}" \
+            "$RUNNER_TEMP/nox-stage" packaging/assets \
+            "NOX-Vault-${{ needs.version.outputs.version }}-macos-arm64.pkg"
+          pkgutil --check-signature "NOX-Vault-${{ needs.version.outputs.version }}-macos-arm64.pkg" || true
+          pkgutil --expand-full "NOX-Vault-${{ needs.version.outputs.version }}-macos-arm64.pkg" "$RUNNER_TEMP/pkg-expanded"
+          find "$RUNNER_TEMP/pkg-expanded" -type f -print
+      - name: Smoke-test PKG install and uninstall
+        run: |
+          sudo installer -pkg "NOX-Vault-${{ needs.version.outputs.version }}-macos-arm64.pkg" -target /
+          /usr/local/bin/nox --version
+          /usr/local/bin/nox --help
+          /usr/local/bin/nox doctor
+          test "$(lipo -archs /usr/local/bin/nox)" = "arm64"
+          sudo /usr/local/share/nox-vault/uninstall-nox-vault
+          test ! -e /usr/local/bin/nox
+      - name: Future Apple signing and notarization hook
+        if: ${{ vars.ENABLE_APPLE_SIGNING == 'true' }}
+        run: echo "Signing was enabled, but Developer ID and notarization commands must be configured first." && exit 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-installer
+          path: NOX-Vault-${{ needs.version.outputs.version }}-macos-arm64.pkg
+          if-no-files-found: error
+
+  linux:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            triplet: x64-linux-release
+            deb_arch: amd64
+          - runner: ubuntu-22.04-arm
+            triplet: arm64-linux-release
+            deb_arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0
+      - name: Install build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y ninja-build pkg-config
+      - name: Configure
+        run: >-
+          cmake -S client -B client/build-release -G Ninja
+          -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          -DVCPKG_MANIFEST_FEATURES=tests
+          -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}
+          -DVCPKG_OVERLAY_TRIPLETS="${{ github.workspace }}/packaging/triplets"
+          -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+      - name: Build and test
+        run: |
+          cmake --build client/build-release --parallel
+          ctest --test-dir client/build-release --output-on-failure
+          client/build-release/nox --version
+          client/build-release/nox --help
+      - name: Build and inspect DEB
+        run: |
+          cd client/build-release
+          cpack -G DEB
+          package="$(find . -maxdepth 1 -name '*.deb' -print -quit)"
+          test -n "$package"
+          dpkg-deb --info "$package"
+          dpkg-deb --contents "$package"
+          mv "$package" "${{ github.workspace }}/nox-vault_${{ needs.version.outputs.version }}_${{ matrix.deb_arch }}.deb"
+      - name: Test supported Linux distributions
+        run: |
+          package="nox-vault_${{ needs.version.outputs.version }}_${{ matrix.deb_arch }}.deb"
+          for image in ubuntu:22.04 ubuntu:24.04 debian:12; do
+            docker run --rm -v "$PWD:/work:ro" "$image" sh -euxc \
+              "apt-get update; apt-get install -y /work/$package; nox --version; nox --help; test -x /usr/bin/nox"
+          done
+      - name: Smoke-test DEB install and uninstall
+        run: |
+          sudo apt-get install -y "./nox-vault_${{ needs.version.outputs.version }}_${{ matrix.deb_arch }}.deb"
+          /usr/bin/nox --version
+          /usr/bin/nox --help
+          /usr/bin/nox doctor
+          sudo apt-get remove -y nox-vault
+          test ! -e /usr/bin/nox
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.deb_arch }}
+          path: nox-vault_${{ needs.version.outputs.version }}_${{ matrix.deb_arch }}.deb
+          if-no-files-found: error
+
+  publish:
+    needs: [version, windows, macos, linux]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "*installer"
+          path: release-assets
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: linux-*
+          path: release-assets
+          merge-multiple: true
+      - name: Create checksums
+        working-directory: release-assets
+        run: sha256sum ./* > SHA256SUMS
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${{ github.ref_name }}" release-assets/*
+          --verify-tag --generate-notes
+          --title "NOX Vault ${{ needs.version.outputs.version }}"

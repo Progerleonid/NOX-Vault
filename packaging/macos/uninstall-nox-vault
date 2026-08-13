@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+if [ "$(id -u)" -ne 0 ]; then
+  echo "Run with administrator privileges: sudo $0" >&2
+  exit 1
+fi
+
+rm -f /usr/local/bin/nox
+rm -rf /usr/local/share/nox-vault
+pkgutil --forget tech.noxvault.cli >/dev/null 2>&1 || true
+echo "NOX Vault was removed. Per-user files under ~/.config/nox were preserved."

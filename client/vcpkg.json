@@ -3,7 +3,7 @@
   "name": "nox-vault-client",
   "version-string": "0.2.5",
   "builtin-baseline": "ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0",
-  "default-features": ["tests"],
+  "default-features": [],
   "dependencies": [
     "cli11",
     "curl",

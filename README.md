@@ -47,9 +47,71 @@ docker-compose.yml      local development stack
 docker-compose.prod.yml production stack
 ```
 
+## Install a release
+
+Tagged releases provide native, system-wide installers for the CLI client. The
+backend is not bundled; installed clients use `https://api.noxvault.tech` by
+default.
+
+| Platform | Supported systems | Release file |
+| --- | --- | --- |
+| Windows | Windows 10/11, x64 | `NOX-Vault-X.Y.Z-windows-x64.msi` |
+| macOS | macOS 15+, Apple Silicon | `NOX-Vault-X.Y.Z-macos-arm64.pkg` |
+| Debian/Ubuntu | Debian 12+ or Ubuntu 22.04+, x64 | `nox-vault_X.Y.Z_amd64.deb` |
+| Debian/Ubuntu | Debian 12+ or Ubuntu 22.04+, ARM64 | `nox-vault_X.Y.Z_arm64.deb` |
+
+Download the package and `SHA256SUMS` from the matching
+[GitHub Release](https://github.com/Progerleonid/NOX-Vault/releases), then verify it before installation:
+
+```bash
+sha256sum --check SHA256SUMS --ignore-missing
+```
+
+On Windows, PowerShell can verify an individual download:
+
+```powershell
+Get-FileHash .\NOX-Vault-0.2.5-windows-x64.msi -Algorithm SHA256
+```
+
+Run the Windows MSI or macOS PKG and approve the administrator prompt. The
+packages are currently unsigned, so Windows SmartScreen or macOS Gatekeeper may
+warn before installation. On macOS, use the supported **Open Anyway** control
+in System Settings > Privacy & Security after the first blocked attempt. Do not
+disable Gatekeeper globally.
+
+Install a Debian package with APT so its declared dependencies are resolved:
+
+```bash
+sudo apt install ./nox-vault_0.2.5_amd64.deb
+```
+
+Open a new terminal after installation, then run:
+
+```bash
+nox --version
+nox --help
+nox doctor
+nox register
+```
+
+`nox doctor` contacts the official API health endpoint. It does not send a
+vault password or plaintext Secret. `nox get --copy` currently has a native
+clipboard backend only on Windows; macOS and Linux builds return an explicit
+error instead of invoking an external clipboard process.
+
+To uninstall on Windows, use **Installed apps**. On Linux, run
+`sudo apt remove nox-vault`. On macOS, run:
+
+```bash
+sudo /usr/local/share/nox-vault/uninstall-nox-vault
+```
+
+Uninstallers preserve per-user configuration and stored sessions in
+`%APPDATA%\Nox` on Windows or `~/.config/nox` on macOS/Linux.
+
 ## Building from source
 
-NOX Vault is distributed as source code. Build the client locally with CMake and vcpkg.
+Build the client locally with CMake and vcpkg.
 
 Ubuntu/Debian build prerequisites:
 
@@ -61,6 +123,8 @@ git clone https://github.com/microsoft/vcpkg "$HOME/vcpkg"
 "$HOME/vcpkg/bootstrap-vcpkg.sh"
 cmake -S client -B client/build -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_TESTING=ON \
+  -DVCPKG_MANIFEST_FEATURES=tests \
   -DCMAKE_TOOLCHAIN_FILE="$HOME/vcpkg/scripts/buildsystems/vcpkg.cmake"
 cmake --build client/build
 ctest --test-dir client/build --output-on-failure
@@ -73,13 +137,38 @@ Windows with Visual Studio 2022 and vcpkg:
 git clone https://github.com/microsoft/vcpkg "$env:USERPROFILE\vcpkg"
 & "$env:USERPROFILE\vcpkg\bootstrap-vcpkg.bat"
 cmake -S client -B client/build -A x64 `
+  -DBUILD_TESTING=ON `
+  -DVCPKG_MANIFEST_FEATURES=tests `
   -DCMAKE_TOOLCHAIN_FILE="$env:USERPROFILE\vcpkg\scripts\buildsystems\vcpkg.cmake"
 cmake --build client/build --config Release
 ctest --test-dir client/build -C Release --output-on-failure
 & ".\client\build\Release\nox.exe" --version
 ```
 
-The vcpkg manifest supplies CLI11, libcurl, nlohmann-json, libsodium and Catch2.
+The vcpkg manifest supplies CLI11, libcurl, nlohmann-json and libsodium. Enable
+the `tests` manifest feature when configuring a vcpkg build with
+`-DVCPKG_MANIFEST_FEATURES=tests`; it adds Catch2.
+
+## Creating a release
+
+The client version has two deliberate source-of-truth declarations:
+`project(... VERSION X.Y.Z)` in `client/CMakeLists.txt` and `version-string` in
+`client/vcpkg.json`. Set both to the same value and push an annotated tag with
+that version:
+
+```bash
+git tag -a v0.2.5 -m "NOX Vault 0.2.5"
+git push origin v0.2.5
+```
+
+The release workflow rejects malformed or mismatched versions, builds and tests
+all four platform artifacts, verifies their basic package contents, creates
+`SHA256SUMS`, and publishes only after every build succeeds. Signing hooks are
+kept disabled until Windows and Apple signing credentials are configured. The
+repository variables `ENABLE_WINDOWS_SIGNING` and `ENABLE_APPLE_SIGNING` are
+guard rails: setting either to `true` intentionally fails the release until its
+certificate-backed command is added, preventing an accidentally unsigned
+release from being published as signed.
 
 ## First use and normal workflow
 

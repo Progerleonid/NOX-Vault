@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="NOX Vault"
+           Manufacturer="NOX Vault Team"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="A17FF150-CC94-4A1F-A195-F3512D3EAB20"
+           Scope="perMachine"
+           InstallerVersion="500"
+           Compressed="yes">
+    <SummaryInformation Description="NOX Vault command-line client" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of NOX Vault is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Property Id="ARPCONTACT" Value="NOX Vault Team" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/Progerleonid/NOX-Vault/issues" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/Progerleonid/NOX-Vault" />
+    <Property Id="ARPPRODUCTICON" Value="NoxVaultIcon" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALTEXT"
+              Value="Open a new terminal, then run 'nox --help' or 'nox register' to get started." />
+    <Icon Id="NoxVaultIcon" SourceFile="$(var.AssetsDir)\nox-vault.ico" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="NOX Vault">
+        <Directory Id="BINDIR" Name="bin">
+          <Component Id="NoxExecutable" Guid="8F7D0CD4-90AF-432B-81AD-F32773169942" Bitness="always64">
+            <File Id="NoxExe" Source="$(var.StageDir)\bin\nox.exe" KeyPath="yes" />
+            <Environment Id="NoxPath" Name="PATH" Value="[BINDIR]" Action="set" Part="last"
+                         System="yes" Permanent="no" />
+          </Component>
+        </Directory>
+        <Component Id="LicenseFile" Guid="DFA6C114-335D-49E3-AFD8-FE1435495C27" Bitness="always64">
+          <File Id="License" Source="$(var.ProjectDir)\LICENSE" Name="LICENSE.txt" KeyPath="yes" />
+        </Component>
+        <Component Id="ReadmeFile" Guid="42332188-A9F4-4A96-9EC7-1315764542F4" Bitness="always64">
+          <File Id="Readme" Source="$(var.ProjectDir)\README.md" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="MainFeature" Title="NOX Vault" Level="1">
+      <ComponentRef Id="NoxExecutable" />
+      <ComponentRef Id="LicenseFile" />
+      <ComponentRef Id="ReadmeFile" />
+    </Feature>
+
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUIBannerBmp" Value="$(var.AssetsDir)\wix-banner.png" />
+    <WixVariable Id="WixUIDialogBmp" Value="$(var.AssetsDir)\wix-dialog.png" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.LicenseRtf)" />
+  </Package>
+</Wix>
