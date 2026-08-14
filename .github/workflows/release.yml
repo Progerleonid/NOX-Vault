@@ -25,31 +25,77 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: microsoft/setup-msbuild@v2
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          arch: win64_msvc2022_64
+          cache: true
       - uses: lukka/run-vcpkg@v11
         with:
           vcpkgGitCommitId: ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0
-      - name: Configure
+      - name: Configure CLI (/MT)
         shell: pwsh
         run: >-
-          cmake -S client -B client/build-release -A x64
+          cmake -S client -B client/build-cli-release -A x64
           -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          -DNOX_BUILD_CLI=ON -DNOX_BUILD_GUI=OFF -DNOX_MSVC_STATIC_RUNTIME=ON
           -DVCPKG_MANIFEST_FEATURES=tests
           -DVCPKG_TARGET_TRIPLET=x64-windows-static
           -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
-      - name: Build and test
+      - name: Build and test CLI
         run: |
-          cmake --build client/build-release --config Release --parallel
-          ctest --test-dir client/build-release -C Release --output-on-failure
-          client\build-release\Release\nox.exe --version
-          client\build-release\Release\nox.exe --help
-      - name: Stage install
-        run: cmake --install client/build-release --config Release --prefix "${{ runner.temp }}\nox-stage"
+          cmake --build client/build-cli-release --config Release --parallel
+          ctest --test-dir client/build-cli-release -C Release --output-on-failure
+          client\build-cli-release\Release\nox.exe --version
+          client\build-cli-release\Release\nox.exe --help
+          client\build-cli-release\Release\nox.exe doctor
+      - name: Configure GUI (/MD)
+        shell: pwsh
+        run: >-
+          cmake -S client -B client/build-gui-release -A x64
+          -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          -DNOX_BUILD_CLI=OFF -DNOX_BUILD_GUI=ON -DNOX_MSVC_STATIC_RUNTIME=OFF
+          -DVCPKG_MANIFEST_FEATURES=tests
+          -DVCPKG_TARGET_TRIPLET=x64-windows
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+      - name: Build and test GUI
+        shell: pwsh
+        run: |
+          cmake --build client/build-gui-release --config Release --parallel
+          ctest --test-dir client/build-gui-release -C Release --output-on-failure
+          & client\build-gui-release\Release\nox_agent_entrypoint_tests.exe `
+            client\build-cli-release\Release\nox.exe client\build-gui-release\Release\nox_gui.exe
+          if ($LASTEXITCODE -ne 0) { throw 'CLI/GUI shared-agent interoperability failed' }
+          $smoke = Start-Process "client\build-gui-release\Release\nox_gui.exe" -ArgumentList '--smoke-test' -Wait -PassThru
+          if ($smoke.ExitCode -ne 0) { throw "GUI smoke test failed with $($smoke.ExitCode)" }
+      - name: Build combined staging tree
+        run: |
+          cmake --install client/build-cli-release --config Release --prefix "${{ runner.temp }}\nox-stage"
+          cmake --install client/build-gui-release --config Release --prefix "${{ runner.temp }}\nox-stage"
+      - name: Inspect staged runtimes
+        shell: pwsh
+        run: |
+          $stage = "${{ runner.temp }}\nox-stage"
+          if (!(Test-Path "$stage\NOX Vault.exe")) { throw 'GUI executable missing' }
+          if (!(Test-Path "$stage\platforms\qwindows.dll")) { throw 'Qt platform plugin missing' }
+          $cliDeps = (dumpbin /dependents "$stage\bin\nox.exe") -join "`n"
+          if ($cliDeps -match 'VCRUNTIME|MSVCP140') { throw 'CLI no longer uses the static MSVC runtime' }
+          $guiDeps = (dumpbin /dependents "$stage\NOX Vault.exe") -join "`n"
+          if ($guiDeps -notmatch 'VCRUNTIME140') { throw 'GUI is not using the expected dynamic MSVC runtime' }
+          $smoke = Start-Process "$stage\NOX Vault.exe" -ArgumentList '--smoke-test' -Wait -PassThru
+          if ($smoke.ExitCode -ne 0) { throw "Staged GUI smoke failed with $($smoke.ExitCode)" }
       - name: Install WiX
         run: dotnet tool install --global wix --version 5.0.2
       - name: Build MSI
         shell: pwsh
         run: |
           wix extension add --global WixToolset.UI.wixext/5.0.2
+          wix build packaging/windows/NOXVaultCliUpgradeFixture.wxs `
+            -arch x64 -d StageDir="${{ runner.temp }}\nox-stage" `
+            -o "${{ runner.temp }}\NOX-Vault-CLI-upgrade-fixture.msi"
           wix build packaging/windows/NOXVault.wxs `
             -arch x64 -ext WixToolset.UI.wixext `
             -d ProductVersion="${{ needs.version.outputs.version }}" `
@@ -62,11 +108,19 @@ jobs:
         shell: pwsh
         run: |
           $msi = (Resolve-Path "NOX-Vault-${{ needs.version.outputs.version }}-windows-x64.msi").Path
+          $fixture = "${{ runner.temp }}\NOX-Vault-CLI-upgrade-fixture.msi"
+          $oldInstall = Start-Process msiexec.exe -ArgumentList @('/i', $fixture, '/qn', '/norestart') -Wait -PassThru
+          if ($oldInstall.ExitCode -ne 0) { throw "CLI-only fixture install failed with $($oldInstall.ExitCode)" }
+          if (!(Test-Path "$env:ProgramFiles\NOX Vault\bin\nox.exe")) { throw 'CLI-only fixture did not install nox.exe' }
           $install = Start-Process msiexec.exe -ArgumentList @('/i', $msi, '/qn', '/norestart') -Wait -PassThru
           if ($install.ExitCode -ne 0) { throw "MSI install failed with $($install.ExitCode)" }
           & "$env:ProgramFiles\NOX Vault\bin\nox.exe" --version
           & "$env:ProgramFiles\NOX Vault\bin\nox.exe" --help
           & "$env:ProgramFiles\NOX Vault\bin\nox.exe" doctor
+          $gui = Start-Process "$env:ProgramFiles\NOX Vault\NOX Vault.exe" -ArgumentList '--smoke-test' -Wait -PassThru
+          if ($gui.ExitCode -ne 0) { throw "Installed GUI smoke failed with $($gui.ExitCode)" }
+          if (!(Test-Path "$env:ProgramFiles\NOX Vault\platforms\qwindows.dll")) { throw 'Qt platform plugin was not installed' }
+          if (!(Test-Path "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\NOX Vault.lnk")) { throw 'Start Menu shortcut missing' }
           $systemPath = (Get-ItemProperty `
             'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment' `
             -Name Path).Path
@@ -74,9 +128,10 @@ jobs:
           $registeredPaths = $systemPath -split ';' | ForEach-Object {
             [Environment]::ExpandEnvironmentVariables($_).Trim().TrimEnd('\')
           }
-          if (-not ($registeredPaths | Where-Object {
+          $noxPathEntries = @($registeredPaths | Where-Object {
             [string]::Equals($_, $expectedPath, [StringComparison]::OrdinalIgnoreCase)
-          })) {
+          })
+          if ($noxPathEntries.Count -ne 1) {
             Write-Host "Expected PATH entry: $expectedPath"
             Write-Host "Machine PATH entries: $($registeredPaths -join ' | ')"
             throw 'MSI did not register NOX Vault in the machine PATH'
@@ -84,6 +139,8 @@ jobs:
           $uninstall = Start-Process msiexec.exe -ArgumentList @('/x', $msi, '/qn', '/norestart') -Wait -PassThru
           if ($uninstall.ExitCode -ne 0) { throw "MSI uninstall failed with $($uninstall.ExitCode)" }
           if (Test-Path "$env:ProgramFiles\NOX Vault\bin\nox.exe") { throw 'MSI uninstall left nox.exe behind' }
+          if (Test-Path "$env:ProgramFiles\NOX Vault\NOX Vault.exe") { throw 'MSI uninstall left the GUI behind' }
+          if (Test-Path "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\NOX Vault.lnk") { throw 'MSI uninstall left the shortcut behind' }
       - name: Future Windows signing hook
         if: ${{ vars.ENABLE_WINDOWS_SIGNING == 'true' }}
         run: echo "Signing was enabled, but the certificate-backed signing command must be configured first." && exit 1
@@ -107,6 +164,7 @@ jobs:
         run: >-
           cmake -S client -B client/build-release -G Ninja
           -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          -DNOX_BUILD_CLI=ON -DNOX_BUILD_GUI=OFF
           -DVCPKG_MANIFEST_FEATURES=tests
           -DVCPKG_TARGET_TRIPLET=arm64-osx-release
           -DVCPKG_OVERLAY_TRIPLETS="${{ github.workspace }}/packaging/triplets"
@@ -171,6 +229,7 @@ jobs:
         run: >-
           cmake -S client -B client/build-release -G Ninja
           -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          -DNOX_BUILD_CLI=ON -DNOX_BUILD_GUI=OFF
           -DVCPKG_MANIFEST_FEATURES=tests
           -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}
           -DVCPKG_OVERLAY_TRIPLETS="${{ github.workspace }}/packaging/triplets"

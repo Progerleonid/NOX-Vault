@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- CI-only fixture representing the previous CLI-only MSI layout. -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="NOX Vault"
+           Manufacturer="NOX Vault Team"
+           Version="0.2.8"
+           UpgradeCode="A17FF150-CC94-4A1F-A195-F3512D3EAB20"
+           Scope="perMachine"
+           InstallerVersion="500"
+           Compressed="yes">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of NOX Vault is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="NOX Vault">
+        <Directory Id="BINDIR" Name="bin">
+          <Component Id="NoxExecutable" Guid="8F7D0CD4-90AF-432B-81AD-F32773169942" Bitness="always64">
+            <File Id="NoxExe" Source="$(var.StageDir)\bin\nox.exe" KeyPath="yes" />
+            <Environment Id="NoxPath" Name="PATH" Value="[BINDIR]" Action="set" Part="last"
+                         System="yes" Permanent="no" />
+          </Component>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="MainFeature" Title="NOX Vault CLI" Level="1">
+      <ComponentRef Id="NoxExecutable" />
+    </Feature>
+  </Package>
+</Wix>

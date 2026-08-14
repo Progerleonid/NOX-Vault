@@ -3,7 +3,7 @@
 #include <algorithm>
 
 namespace nox {
-void VaultService::initialize(std::string password, bool private_metadata) {
+Bytes VaultService::initialize(std::string password, bool private_metadata) {
     auto kdf = crypto_.default_kdf();
     auto vault_key = crypto_.random_vault_key();
     auto kek = crypto_.derive_kek(password, kdf);
@@ -18,7 +18,7 @@ void VaultService::initialize(std::string password, bool private_metadata) {
     }
     CryptoService::wipe(password);
     CryptoService::wipe(kek);
-    CryptoService::wipe(vault_key);
+    return vault_key;
 }
 VaultMetadata VaultService::metadata() const {
     return parse_vault(api_.get("/vault"));
@@ -149,8 +149,13 @@ void VaultService::remove(const std::string &name) {
     api_.remove("/secrets/" + record.id);
 }
 Bytes VaultService::unlock_with_password(std::string password) const {
-    auto vault = metadata();
-    return unlock(vault, password);
+    try {
+        auto vault = metadata();
+        return unlock(vault, password);
+    } catch (...) {
+        CryptoService::wipe(password);
+        throw;
+    }
 }
 void VaultService::rotate_password(std::string old_password, std::string new_password) {
     auto vault = metadata();

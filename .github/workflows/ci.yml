@@ -49,11 +49,51 @@ jobs:
           cmake -S /tmp/Catch2 -B /tmp/Catch2/build -G Ninja -DCATCH_BUILD_TESTING=OFF
           cmake --build /tmp/Catch2/build
           sudo cmake --install /tmp/Catch2/build
-      - run: cmake -S client -B client/build -G Ninja
+      - run: cmake -S client -B client/build -G Ninja -DNOX_BUILD_CLI=ON -DNOX_BUILD_GUI=OFF
       - run: cmake --build client/build
       - run: ctest --test-dir client/build --output-on-failure
       - run: cmake --install client/build --prefix "$RUNNER_TEMP/nox-install"
       - run: cd /tmp && "$RUNNER_TEMP/nox-install/bin/nox" --version
+
+  windows-client:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          arch: win64_msvc2022_64
+          cache: true
+      - uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0
+      - name: Configure, build and test static CLI
+        shell: pwsh
+        run: |
+          cmake -S client -B client/build-ci-cli -A x64 -DBUILD_TESTING=ON `
+            -DNOX_BUILD_CLI=ON -DNOX_BUILD_GUI=OFF -DNOX_MSVC_STATIC_RUNTIME=ON `
+            -DVCPKG_MANIFEST_FEATURES=tests -DVCPKG_TARGET_TRIPLET=x64-windows-static `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          cmake --build client/build-ci-cli --config Release --parallel
+          ctest --test-dir client/build-ci-cli -C Release --output-on-failure
+      - name: Configure, build and test dynamic GUI
+        shell: pwsh
+        run: |
+          cmake -S client -B client/build-ci-gui -A x64 -DBUILD_TESTING=ON `
+            -DNOX_BUILD_CLI=OFF -DNOX_BUILD_GUI=ON -DNOX_MSVC_STATIC_RUNTIME=OFF `
+            -DVCPKG_MANIFEST_FEATURES=tests -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          cmake --build client/build-ci-gui --config Release --parallel
+          ctest --test-dir client/build-ci-gui -C Release --output-on-failure
+          & client/build-ci-gui/Release/nox_agent_entrypoint_tests.exe `
+            client/build-ci-cli/Release/nox.exe client/build-ci-gui/Release/nox_gui.exe
+          if ($LASTEXITCODE -ne 0) { throw 'CLI/GUI shared-agent interoperability failed' }
+          $smoke = Start-Process 'client/build-ci-gui/Release/nox_gui.exe' -ArgumentList '--smoke-test' -Wait -PassThru
+          if ($smoke.ExitCode -ne 0) { throw "GUI smoke failed with $($smoke.ExitCode)" }
 
   compose:
     runs-on: ubuntu-24.04
