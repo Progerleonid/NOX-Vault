@@ -201,6 +201,9 @@ if(BUILD_TESTING)
         add_test(NAME agent_entrypoint_lifecycle COMMAND nox_agent_entrypoint_tests
             $<TARGET_FILE:nox> $<TARGET_FILE:nox>)
     endif()
+    if(NOX_BUILD_GUI OR NOX_BUILD_CLI)
+        set_tests_properties(agent_entrypoint_lifecycle PROPERTIES TIMEOUT 30)
+    endif()
     if(NOX_BUILD_GUI)
         find_package(Qt6 REQUIRED COMPONENTS Test)
         add_executable(nox_gui_tests tests/test_gui.cpp include/nox/gui/app_controller.hpp

@@ -16,6 +16,8 @@
 #include <windows.h>
 #include <sddl.h>
 #else
+#include <fcntl.h>
+#include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -152,6 +154,27 @@ std::filesystem::path runtime_dir() {
     const char *x = std::getenv("XDG_RUNTIME_DIR");
     return x && *x ? std::filesystem::path(x) / "nox"
                    : std::filesystem::temp_directory_path() / ("nox-" + std::to_string(getuid()));
+}
+std::filesystem::path lock_path(const char *name) {
+    return runtime_dir() / name;
+}
+int acquire_process_lock(const std::filesystem::path &path, bool nonblocking) {
+    std::filesystem::create_directories(runtime_dir());
+    chmod(runtime_dir().c_str(), 0700);
+    const auto fd = open(path.c_str(), O_CREAT | O_RDWR, 0600);
+    if (fd < 0)
+        return -1;
+    if (flock(fd, LOCK_EX | (nonblocking ? LOCK_NB : 0)) == 0)
+        return fd;
+    const auto error = errno;
+    close(fd);
+    return nonblocking && (error == EWOULDBLOCK || error == EAGAIN) ? -2 : -1;
+}
+void release_process_lock(int fd) {
+    if (fd >= 0) {
+        (void)flock(fd, LOCK_UN);
+        close(fd);
+    }
 }
 std::string endpoint() {
     return (runtime_dir() / "agent.sock").string();
@@ -333,10 +356,24 @@ void AgentClient::ensure_running() const {
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
 #else
+    const auto startup_lock = acquire_process_lock(lock_path("agent-startup.lock"), false);
+    if (startup_lock < 0)
+        throw NoxError("Unable to coordinate local vault agent startup");
+    // Another client may have started the shared agent while this process was
+    // waiting for the startup lock.
+    if (available()) {
+        release_process_lock(startup_lock);
+        return;
+    }
     auto pid = fork();
-    if (pid < 0)
+    if (pid < 0) {
+        release_process_lock(startup_lock);
         throw NoxError("Unable to start local vault agent");
+    }
     if (pid == 0) {
+        // The child inherited the same open file description. Closing its copy
+        // leaves the parent holding the lock until startup has been verified.
+        close(startup_lock);
         setsid();
         execl(executable_.c_str(), executable_.c_str(), "agent", "--serve", nullptr);
         _exit(127);
@@ -353,6 +390,8 @@ void AgentClient::ensure_running() const {
 #ifdef _WIN32
     ReleaseMutex(startup_mutex);
     CloseHandle(startup_mutex);
+#else
+    release_process_lock(startup_lock);
 #endif
     if (!started)
         throw NoxError("Local vault agent did not start");
@@ -386,6 +425,12 @@ int run_agent(long idle, long absolute) {
         CloseHandle(instance_mutex);
         return 0;
     }
+#else
+    const auto instance_lock = acquire_process_lock(lock_path("agent-instance.lock"), true);
+    if (instance_lock == -2)
+        return 0;
+    if (instance_lock < 0)
+        return 1;
 #endif
     CryptoService crypto;
     Bytes key;
@@ -410,6 +455,7 @@ int run_agent(long idle, long absolute) {
         stop = true;
         watchdog_wakeup.notify_all();
         watchdog.join();
+        release_process_lock(instance_lock);
         return 1;
     }
 #endif
@@ -509,6 +555,8 @@ int run_agent(long idle, long absolute) {
 #ifdef _WIN32
     ReleaseMutex(instance_mutex);
     CloseHandle(instance_mutex);
+#else
+    release_process_lock(instance_lock);
 #endif
     return 0;
 }
