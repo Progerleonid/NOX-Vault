@@ -282,7 +282,11 @@ AgentClient::AgentClient(std::filesystem::path executable) : executable_(std::mo
 }
 bool AgentClient::available() const noexcept {
     try {
+#ifdef _WIN32
         auto h = connect_channel_with_retry(5);
+#else
+        auto h = connect_channel();
+#endif
         if (!valid(h))
             return false;
         auto r = exchange(h, {{"op", "status"}});
