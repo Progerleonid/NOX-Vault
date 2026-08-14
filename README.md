@@ -72,7 +72,7 @@ sha256sum --check SHA256SUMS --ignore-missing
 On Windows, PowerShell can verify an individual download:
 
 ```powershell
-Get-FileHash .\NOX-Vault-0.3.0-windows-x64.msi -Algorithm SHA256
+Get-FileHash .\NOX-Vault-0.3.1-windows-x64.msi -Algorithm SHA256
 ```
 
 Run the Windows MSI or macOS PKG and approve the administrator prompt. The
@@ -84,7 +84,7 @@ disable Gatekeeper globally.
 Install a Debian package with APT so its declared dependencies are resolved:
 
 ```bash
-sudo apt install ./nox-vault_0.3.0_amd64.deb
+sudo apt install ./nox-vault_0.3.1_amd64.deb
 ```
 
 On Windows, launch **NOX Vault** from the Start menu. The same MSI installs the
@@ -190,8 +190,8 @@ The client version has two deliberate source-of-truth declarations:
 that version:
 
 ```bash
-git tag -a v0.3.0 -m "NOX Vault 0.3.0"
-git push origin v0.3.0
+git tag -a v0.3.1 -m "NOX Vault 0.3.1"
+git push origin v0.3.1
 ```
 
 The release workflow rejects malformed or mismatched versions, builds and tests

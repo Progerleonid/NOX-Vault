@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(nox_vault_client VERSION 0.3.0 LANGUAGES CXX)
+project(nox_vault_client VERSION 0.3.1 LANGUAGES CXX)
 
 set(NOX_PRODUCT_NAME "NOX Vault")
 set(NOX_VENDOR "NOX Vault Team")
