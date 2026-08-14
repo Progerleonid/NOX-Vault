@@ -36,6 +36,8 @@ struct SecretRecord {
     std::optional<Bytes> name_hash;
     EncryptedValue value;
     int record_version{};
+    std::optional<std::string> created_at;
+    std::optional<std::string> updated_at;
 };
 struct AuthSession {
     std::string access_token;

@@ -5,6 +5,7 @@
 #include "nox/vault_service.hpp"
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdlib>
 #include <cctype>
 #include <mutex>
@@ -36,6 +37,14 @@ std::string endpoint() {
             c = '_';
     return "\\\\.\\pipe\\nox-vault-" + s;
 }
+std::string startup_mutex_name() {
+    auto name = endpoint().substr(std::string("\\\\.\\pipe\\").size());
+    return "Local\\" + name + "-startup";
+}
+std::string instance_mutex_name() {
+    auto name = endpoint().substr(std::string("\\\\.\\pipe\\").size());
+    return "Local\\" + name + "-instance";
+}
 using Channel = HANDLE;
 void close_channel(Channel h) {
     CloseHandle(h);
@@ -52,12 +61,12 @@ Channel connect_channel() {
     return CreateFileA(endpoint().c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
 }
 
-Channel connect_channel_with_retry() {
+Channel connect_channel_with_retry(int attempts = 50) {
     // The Windows server handles one pipe instance at a time. After a client
     // disconnects there is a short interval before accept_channel() creates
     // the next instance. In particular, ensure_running() probes the agent and
     // the real request follows immediately, so retry that transient gap.
-    for (int i = 0; i < 50; ++i) {
+    for (int i = 0; i < attempts; ++i) {
         auto h = connect_channel();
         if (h != INVALID_HANDLE_VALUE)
             return h;
@@ -273,7 +282,7 @@ AgentClient::AgentClient(std::filesystem::path executable) : executable_(std::mo
 }
 bool AgentClient::available() const noexcept {
     try {
-        auto h = connect_channel();
+        auto h = connect_channel_with_retry(5);
         if (!valid(h))
             return false;
         auto r = exchange(h, {{"op", "status"}});
@@ -287,12 +296,36 @@ void AgentClient::ensure_running() const {
     if (available())
         return;
 #ifdef _WIN32
+    // Serialize the probe-and-spawn sequence across CLI and GUI processes.
+    // The wire protocol and the shared pipe remain unchanged.
+    HANDLE startup_mutex = CreateMutexA(nullptr, FALSE, startup_mutex_name().c_str());
+    if (!startup_mutex)
+        throw NoxError("Unable to coordinate local vault agent startup");
+    const auto wait = WaitForSingleObject(startup_mutex, 5000);
+    if (wait != WAIT_OBJECT_0 && wait != WAIT_ABANDONED) {
+        CloseHandle(startup_mutex);
+        throw NoxError("Timed out coordinating local vault agent startup");
+    }
+    // A live single-instance pipe briefly disappears while the server moves
+    // from one client to the next. Retry under the startup mutex so that this
+    // normal hand-off cannot be mistaken for a missing agent.
+    for (int i = 0; i < 20; ++i) {
+        if (available()) {
+            ReleaseMutex(startup_mutex);
+            CloseHandle(startup_mutex);
+            return;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
     std::string cmd = '"' + executable_.string() + "\" agent --serve";
     STARTUPINFOA si{sizeof(si)};
     PROCESS_INFORMATION pi{};
     if (!CreateProcessA(nullptr, cmd.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW | DETACHED_PROCESS, nullptr,
-                        nullptr, &si, &pi))
+                        nullptr, &si, &pi)) {
+        ReleaseMutex(startup_mutex);
+        CloseHandle(startup_mutex);
         throw NoxError("Unable to start local vault agent");
+    }
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
 #else
@@ -305,9 +338,19 @@ void AgentClient::ensure_running() const {
         _exit(127);
     }
 #endif
-    for (int i = 0; i < 50 && !available(); ++i)
+    bool started = false;
+    for (int i = 0; i < 50; ++i) {
+        if (available()) {
+            started = true;
+            break;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    if (!available())
+    }
+#ifdef _WIN32
+    ReleaseMutex(startup_mutex);
+    CloseHandle(startup_mutex);
+#endif
+    if (!started)
         throw NoxError("Local vault agent did not start");
 }
 nlohmann::json AgentClient::request(const nlohmann::json &value) const {
@@ -330,15 +373,27 @@ nlohmann::json AgentClient::request(const nlohmann::json &value) const {
     }
 }
 int run_agent(long idle, long absolute) {
+#ifdef _WIN32
+    HANDLE instance_mutex = CreateMutexA(nullptr, FALSE, instance_mutex_name().c_str());
+    if (!instance_mutex)
+        return 1;
+    const auto instance_wait = WaitForSingleObject(instance_mutex, 1500);
+    if (instance_wait != WAIT_OBJECT_0 && instance_wait != WAIT_ABANDONED) {
+        CloseHandle(instance_mutex);
+        return 0;
+    }
+#endif
     CryptoService crypto;
     Bytes key;
     std::mutex mutex;
+    std::condition_variable watchdog_wakeup;
     std::atomic<bool> stop = false;
     auto started = std::chrono::steady_clock::now(), last = started;
     std::thread watchdog([&] {
+        std::unique_lock l(mutex);
         while (!stop) {
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-            std::scoped_lock l(mutex);
+            if (watchdog_wakeup.wait_for(l, std::chrono::seconds(1), [&] { return stop.load(); }))
+                break;
             auto now = std::chrono::steady_clock::now();
             if (!key.empty() &&
                 (now - last > std::chrono::seconds(idle) || now - started > std::chrono::seconds(absolute)))
@@ -349,6 +404,7 @@ int run_agent(long idle, long absolute) {
     int listener = listen_channel();
     if (listener < 0) {
         stop = true;
+        watchdog_wakeup.notify_all();
         watchdog.join();
         return 1;
     }
@@ -444,7 +500,12 @@ int run_agent(long idle, long absolute) {
         CryptoService::wipe(key);
     }
     stop = true;
+    watchdog_wakeup.notify_all();
     watchdog.join();
+#ifdef _WIN32
+    ReleaseMutex(instance_mutex);
+    CloseHandle(instance_mutex);
+#endif
     return 0;
 }
 } // namespace nox

@@ -8,20 +8,27 @@
            Scope="perMachine"
            InstallerVersion="500"
            Compressed="yes">
-    <SummaryInformation Description="NOX Vault command-line client" />
+    <SummaryInformation Description="NOX Vault desktop application and command-line client" />
     <MajorUpgrade DowngradeErrorMessage="A newer version of NOX Vault is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
     <Property Id="ARPCONTACT" Value="NOX Vault Team" />
     <Property Id="ARPHELPLINK" Value="https://github.com/Progerleonid/NOX-Vault/issues" />
     <Property Id="ARPURLINFOABOUT" Value="https://github.com/Progerleonid/NOX-Vault" />
-    <Property Id="ARPPRODUCTICON" Value="NoxVaultIcon" />
+    <Property Id="ARPPRODUCTICON" Value="NoxVaultIcon.ico" />
     <Property Id="WIXUI_EXITDIALOGOPTIONALTEXT"
-              Value="Open a new terminal, then run 'nox --help' or 'nox register' to get started." />
-    <Icon Id="NoxVaultIcon" SourceFile="$(var.AssetsDir)\nox-vault.ico" />
+              Value="Launch NOX Vault from the Start menu, or open a new terminal and run 'nox --help'." />
+    <Icon Id="NoxVaultIcon.ico" SourceFile="$(var.AssetsDir)\nox-vault.ico" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="NOX Vault">
+        <Component Id="NoxGuiExecutable" Guid="5DA54B90-D1B0-4485-A0CB-D7916D10A278" Bitness="always64">
+          <File Id="NoxGuiExe" Source="$(var.StageDir)\NOX Vault.exe" KeyPath="yes">
+            <Shortcut Id="NoxStartMenuShortcut" Directory="ProgramMenuFolder"
+                      Name="NOX Vault" Description="NOX Vault password manager"
+                      WorkingDirectory="INSTALLFOLDER" Icon="NoxVaultIcon.ico" Advertise="yes" />
+          </File>
+        </Component>
         <Directory Id="BINDIR" Name="bin">
           <Component Id="NoxExecutable" Guid="8F7D0CD4-90AF-432B-81AD-F32773169942" Bitness="always64">
             <File Id="NoxExe" Source="$(var.StageDir)\bin\nox.exe" KeyPath="yes" />
@@ -37,8 +44,16 @@
         </Component>
       </Directory>
     </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
 
     <Feature Id="MainFeature" Title="NOX Vault" Level="1">
+      <Files Directory="INSTALLFOLDER" Include="$(var.StageDir)\**">
+        <Exclude Files="$(var.StageDir)\NOX Vault.exe" />
+        <Exclude Files="$(var.StageDir)\bin\nox.exe" />
+        <Exclude Files="$(var.StageDir)\**\*.pdb" />
+        <Exclude Files="$(var.StageDir)\**\Qt6*d.dll" />
+      </Files>
+      <ComponentRef Id="NoxGuiExecutable" />
       <ComponentRef Id="NoxExecutable" />
       <ComponentRef Id="LicenseFile" />
       <ComponentRef Id="ReadmeFile" />

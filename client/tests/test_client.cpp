@@ -69,9 +69,13 @@ TEST_CASE("secret serialization roundtrips and rejects unknown formats") {
     auto json = serialize_secret("", std::string("github"), std::nullopt, value);
     json["id"] = "00000000-0000-0000-0000-000000000001";
     json["record_version"] = 1;
+    json["created_at"] = "2026-08-13T10:00:00Z";
+    json["updated_at"] = "2026-08-14T10:00:00Z";
     auto parsed = parse_secret(json);
     REQUIRE(parsed.name == "github");
     REQUIRE(parsed.value.ciphertext == value.ciphertext);
+    REQUIRE(parsed.created_at == "2026-08-13T10:00:00Z");
+    REQUIRE(parsed.updated_at == "2026-08-14T10:00:00Z");
     json["version"] = 2;
     REQUIRE_THROWS_AS(parse_secret(json), ApiCompatibilityError);
 }
@@ -225,6 +229,18 @@ TEST_CASE("config defaults override reset and URL policy") {
     ConfigManager config(directory);
     REQUIRE(config.effective_server_url() == NOX_DEFAULT_SERVER_URL);
     REQUIRE_FALSE(config.has_server_override());
+    REQUIRE(config.get("clipboard_timeout_seconds") == "30");
+    REQUIRE(config.get("start_locked") == "false");
+    REQUIRE(config.get("language") == "en");
+    config.set("clipboard_timeout_seconds", "45");
+    config.set("start_locked", "true");
+    config.set("language", "ru");
+    REQUIRE(config.load().clipboard_timeout_seconds == 45);
+    REQUIRE(config.load().start_locked);
+    REQUIRE(config.load().language == "ru");
+    config.unset("clipboard_timeout_seconds");
+    config.unset("start_locked");
+    config.unset("language");
     config.set("server_url", "https://vault.example");
     REQUIRE(config.effective_server_url() == "https://vault.example");
     config.unset("server_url");
@@ -235,5 +251,16 @@ TEST_CASE("config defaults override reset and URL policy") {
     REQUIRE_THROWS_AS(ConfigManager::validate_server_url("https://user@example.com"), ConfigurationError);
     REQUIRE_THROWS_AS(ConfigManager::validate_server_url("https://example.com/path"), ConfigurationError);
     REQUIRE_THROWS_AS(ConfigManager::validate_server_url("https://example.com?query"), ConfigurationError);
+    const AuthSession first{"token-one", "user-one", "one@example.com", 100};
+    const AuthSession second{"token-two", "user-two", "two@example.com", 200};
+    config.save_session(first);
+    config.save_session(second);
+    REQUIRE(config.list_sessions().size() == 2);
+    REQUIRE(config.load_session()->user_id == "user-two");
+    config.activate_session("user-one");
+    REQUIRE(config.load_session()->email == "one@example.com");
+    config.clear_session();
+    REQUIRE_FALSE(config.load_session());
+    REQUIRE(config.list_sessions().size() == 1);
     std::filesystem::remove_all(directory);
 }

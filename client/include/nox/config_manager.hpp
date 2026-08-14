@@ -11,6 +11,9 @@ struct ClientConfig {
     long timeout_seconds{15};
     std::string color{"auto"};
     long unlock_timeout_seconds{900};
+    long clipboard_timeout_seconds{30};
+    bool start_locked{false};
+    std::string language{"en"};
 };
 
 class ConfigManager {
@@ -25,6 +28,8 @@ class ConfigManager {
     [[nodiscard]] std::optional<AuthSession> load_session() const;
     void save_session(const AuthSession &session) const;
     void clear_session() const;
+    [[nodiscard]] std::vector<AuthSession> list_sessions() const;
+    void activate_session(const std::string &user_id) const;
     [[nodiscard]] const std::filesystem::path &directory() const noexcept {
         return directory_;
     }
@@ -34,6 +39,7 @@ class ConfigManager {
     std::filesystem::path directory_;
     [[nodiscard]] std::filesystem::path config_path() const;
     [[nodiscard]] std::filesystem::path session_path() const;
+    [[nodiscard]] std::filesystem::path accounts_path() const;
     void write_json(const std::filesystem::path &path, const nlohmann::json &json) const;
 };
 } // namespace nox

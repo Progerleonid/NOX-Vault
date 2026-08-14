@@ -202,6 +202,8 @@ int main(int argc, char **argv) {
             auto password = account_password();
             auto session = auth.authenticate(email, password, reg->parsed());
             nox::CryptoService::wipe(password);
+            if (agent.available())
+                (void)agent.request({{"op", "lock"}});
             std::cout << (*reg ? "Account created" : "Logged in") << " as " << session.email << ".\n";
             return 0;
         }
@@ -228,7 +230,8 @@ int main(int argc, char **argv) {
                 throw nox::NoxError("Master passwords do not match");
             }
             nox::CryptoService::wipe(b);
-            vault.initialize(std::move(a), private_metadata);
+            auto key = vault.initialize(std::move(a), private_metadata);
+            nox::CryptoService::wipe(key);
             std::cout << "Encrypted vault initialized.\n";
             return 0;
         }

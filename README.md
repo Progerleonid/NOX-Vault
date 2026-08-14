@@ -21,14 +21,16 @@ NOX VAULT is an educational multi-user secrets vault. Its C++20 client encrypts 
 - Password rotation re-wraps the Vault Key without re-encrypting every Secret.
 - Optional private metadata encrypts Secret names locally; keyed name hashes enforce per-vault uniqueness.
 - Optimistic record versions prevent silent stale updates.
-- A user-scoped local agent supports `unlock` across terminals with idle and absolute timeouts.
+- A user-scoped local agent shares one unlock lifecycle between the Windows GUI and every CLI terminal, with idle and absolute timeouts.
 - Encrypted export/import never creates a plaintext backup.
 
 The API never defines fields for the vault master password, plaintext Secret, KEK or decrypted Vault Key. It does receive the separate account password over HTTPS for server authentication. See [cryptography](docs/CRYPTOGRAPHY.md), [threat model](docs/THREAT_MODEL.md), [architecture](docs/ARCHITECTURE.md) and [API](docs/API.md).
 
 ```mermaid
 flowchart LR
-    T["Terminal"] --> N["nox + libsodium"]
+    G["Windows GUI"] --> A["Shared local agent"]
+    T["Terminal / nox"] --> A
+    A --> N["NOX core + libsodium"]
     N -->|"HTTPS ciphertext only"| C["Caddy"]
     C --> F["FastAPI"]
     F --> P[("PostgreSQL")]
@@ -37,7 +39,7 @@ flowchart LR
 ## Repository
 
 ```text
-client/                 C++20 CLI, local agent, crypto and Catch2 tests
+client/                 C++20 CLI, Qt/QML GUI, shared local agent and tests
 server/                 FastAPI, SQLAlchemy, Alembic and pytest tests
 docs/                   architecture, crypto, threat model and API
 deploy/                 Caddy and production environment template
@@ -49,9 +51,9 @@ docker-compose.prod.yml production stack
 
 ## Install a release
 
-Tagged releases provide native, system-wide installers for the CLI client. The
-backend is not bundled; installed clients use `https://api.noxvault.tech` by
-default.
+Tagged releases provide native, system-wide installers. The Windows MSI contains
+the desktop GUI plus the `nox` CLI; macOS and Linux packages remain CLI-only. The
+backend is not bundled; installed clients use `https://api.noxvault.tech` by default.
 
 | Platform | Supported systems | Release file |
 | --- | --- | --- |
@@ -70,7 +72,7 @@ sha256sum --check SHA256SUMS --ignore-missing
 On Windows, PowerShell can verify an individual download:
 
 ```powershell
-Get-FileHash .\NOX-Vault-0.2.7-windows-x64.msi -Algorithm SHA256
+Get-FileHash .\NOX-Vault-0.3.0-windows-x64.msi -Algorithm SHA256
 ```
 
 Run the Windows MSI or macOS PKG and approve the administrator prompt. The
@@ -82,9 +84,11 @@ disable Gatekeeper globally.
 Install a Debian package with APT so its declared dependencies are resolved:
 
 ```bash
-sudo apt install ./nox-vault_0.2.7_amd64.deb
+sudo apt install ./nox-vault_0.3.0_amd64.deb
 ```
 
+On Windows, launch **NOX Vault** from the Start menu. The same MSI installs the
+CLI into `%ProgramFiles%\NOX Vault\bin` and adds only that directory to `PATH`.
 Open a new terminal after installation, then run:
 
 ```bash
@@ -131,19 +135,48 @@ ctest --test-dir client/build --output-on-failure
 ./client/build/nox --version
 ```
 
-Windows with Visual Studio 2022 and vcpkg:
+Windows CLI with Visual Studio 2022 and vcpkg (the existing defaults remain
+`/MT`, `x64-windows-static`, and GUI disabled):
 
 ```powershell
 git clone https://github.com/microsoft/vcpkg "$env:USERPROFILE\vcpkg"
 & "$env:USERPROFILE\vcpkg\bootstrap-vcpkg.bat"
-cmake -S client -B client/build -A x64 `
+cmake -S client -B client/build-cli -A x64 `
   -DBUILD_TESTING=ON `
+  -DNOX_BUILD_CLI=ON -DNOX_BUILD_GUI=OFF -DNOX_MSVC_STATIC_RUNTIME=ON `
   -DVCPKG_MANIFEST_FEATURES=tests `
+  -DVCPKG_TARGET_TRIPLET=x64-windows-static `
   -DCMAKE_TOOLCHAIN_FILE="$env:USERPROFILE\vcpkg\scripts\buildsystems\vcpkg.cmake"
-cmake --build client/build --config Release
-ctest --test-dir client/build -C Release --output-on-failure
-& ".\client\build\Release\nox.exe" --version
+cmake --build client/build-cli --config Release
+ctest --test-dir client/build-cli -C Release --output-on-failure
+& ".\client\build-cli\Release\nox.exe" --version
 ```
+
+The official shared Qt binaries use the dynamic MSVC runtime. Build the Windows
+GUI from the same sources in a separate `/MD`, `x64-windows` tree (Qt 6.8.3 or a
+compatible Qt 6.8 release):
+
+```powershell
+$qt = "$env:USERPROFILE\Qt\6.8.3\msvc2022_64"
+cmake -S client -B client/build-gui -A x64 `
+  -DBUILD_TESTING=ON `
+  -DNOX_BUILD_CLI=OFF -DNOX_BUILD_GUI=ON -DNOX_MSVC_STATIC_RUNTIME=OFF `
+  -DVCPKG_MANIFEST_FEATURES=tests `
+  -DVCPKG_TARGET_TRIPLET=x64-windows `
+  -DCMAKE_PREFIX_PATH="$qt" `
+  -DCMAKE_TOOLCHAIN_FILE="$env:USERPROFILE\vcpkg\scripts\buildsystems\vcpkg.cmake"
+cmake --build client/build-gui --config Release
+ctest --test-dir client/build-gui -C Release --output-on-failure
+cmake --install client/build-cli --config Release --prefix "$PWD\stage"
+cmake --install client/build-gui --config Release --prefix "$PWD\stage"
+& "$PWD\stage\NOX Vault.exe" --smoke-test
+```
+
+Both executables call the same `nox_core` implementation. `NOX Vault.exe agent
+--serve` is the GUI's hidden copy of the existing agent entrypoint, using the
+same named pipe, JSON operations, 15-minute idle timeout and 8-hour absolute
+timeout. A GUI and CLI therefore discover and reuse whichever shared agent is
+already running; closing the GUI does not lock or terminate it.
 
 The vcpkg manifest supplies CLI11, libcurl, nlohmann-json and libsodium. Enable
 the `tests` manifest feature when configuring a vcpkg build with
@@ -157,8 +190,8 @@ The client version has two deliberate source-of-truth declarations:
 that version:
 
 ```bash
-git tag -a v0.2.7 -m "NOX Vault 0.2.7"
-git push origin v0.2.7
+git tag -a v0.3.0 -m "NOX Vault 0.3.0"
+git push origin v0.3.0
 ```
 
 The release workflow rejects malformed or mismatched versions, builds and tests

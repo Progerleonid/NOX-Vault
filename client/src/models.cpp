@@ -68,6 +68,10 @@ SecretRecord parse_secret(const nlohmann::json &j) {
                        base64_decode(j.at("ciphertext").get<std::string>()),
                        base64_decode(j.at("nonce").get<std::string>())};
         value.record_version = j.at("record_version").get<int>();
+        if (j.contains("created_at") && !j.at("created_at").is_null())
+            value.created_at = j.at("created_at").get<std::string>();
+        if (j.contains("updated_at") && !j.at("updated_at").is_null())
+            value.updated_at = j.at("updated_at").get<std::string>();
         validate_format(value.value.version, value.value.algorithm);
         return value;
     } catch (const nlohmann::json::exception &) {

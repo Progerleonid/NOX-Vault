@@ -11,7 +11,7 @@ class VaultService {
     VaultService(ApiClient &api, CryptoService &crypto, std::string user_id)
         : api_(api), crypto_(crypto), user_id_(std::move(user_id)) {
     }
-    void initialize(std::string master_password, bool private_metadata = false);
+    [[nodiscard]] Bytes initialize(std::string master_password, bool private_metadata = false);
     [[nodiscard]] VaultMetadata metadata() const;
     [[nodiscard]] std::vector<SecretRecord> list() const;
     void add(const std::string &name, const std::string &plaintext, std::string master_password);
